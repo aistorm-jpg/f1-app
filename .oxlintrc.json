@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true
+  },
+  "ignorePatterns": ["dist", "assets", "public"],
+  "overrides": [
+    {
+      "files": ["scripts/**/*.ts"],
+      "env": {
+        "node": true
+      },
+      "globals": {
+        "Bun": "readonly"
+      }
+    },
+    {
+      "files": ["src/sw.js"],
+      "env": {
+        "serviceworker": true,
+        "browser": true
+      }
+    }
+  ]
+}

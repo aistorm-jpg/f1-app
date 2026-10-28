@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#070708" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="{{description}}" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Apex" />
+    <title>{{title}} · Apex</title>
+    <link rel="icon" href="./icons/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="preload" href="./fonts/oswald.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./fonts/outfit.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="{{page}}">
+    <a class="skip" href="#indhold">Spring til indhold</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="logo" href="./" aria-label="Apex, forside">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="4" y="8" width="3.2" height="16" rx="1.6" fill="#e10600" />
+            <path fill="#e10600" d="M10 7h5.2L26 16l-10.8 9H10l8.2-9L10 7z" />
+          </svg>
+          <span class="logo-word">Apex</span>
+        </a>
+        <p class="season-chip">Sæson {{season}} · dansk tid</p>
+        <nav class="desktop-nav" aria-label="Hovedmenu">
+          <a href="./" {{homeCurrent}}>Oversigt</a>
+          <a href="./koerer.html" {{driversCurrent}}>Kørere</a>
+          <a href="./konstruktorer.html" {{constructorsCurrent}}>Konstruktører</a>
+          <a href="./kalender.html" {{calendarCurrent}}>Kalender</a>
+          <a href="./resultater.html" {{resultsCurrent}}>Resultater</a>
+        </nav>
+      </div>
+    </header>
+    <main id="indhold" aria-busy="{{busy}}">{{main}}</main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><strong>Apex</strong> er en personlig sæsonoversigt. Ikke tilknyttet Formel 1.</p>
+        <p>
+          Data hentes i browseren fra
+          <a href="https://api.jolpi.ca/ergast/f1/" rel="noreferrer">Jolpica</a>. Tider vises i
+          Europe/Copenhagen.
+        </p>
+      </div>
+    </footer>
+    <nav class="tabbar" aria-label="Mobilmenu">
+      <a href="./" {{homeCurrent}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 11.2 12 4l8 7.2V20h-6v-5H10v5H4z" />
+        </svg>
+        Hjem
+      </a>
+      <a href="./koerer.html" {{driversCurrent}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.2" />
+          <path d="M5 19.5c1.4-3.2 3.8-4.8 7-4.8s5.6 1.6 7 4.8" />
+        </svg>
+        Kørere
+      </a>
+      <a href="./konstruktorer.html" {{constructorsCurrent}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 17 8 7h3l4 10M7 13h6M15 17l2.2-6H20L17.2 17" />
+        </svg>
+        Teams
+      </a>
+      <a href="./kalender.html" {{calendarCurrent}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path d="M8 3.5v4M16 3.5v4M4 10h16" />
+        </svg>
+        Kalender
+      </a>
+      <a href="./resultater.html" {{resultsCurrent}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9" /></svg>
+        Resultat
+      </a>
+    </nav>
+    {{script}}
+  </body>
+</html>
