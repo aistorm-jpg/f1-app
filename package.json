@@ -1,0 +1,19 @@
+{
+  "name": "f1-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "build": "bun run scripts/build.ts",
+    "preview": "bun run scripts/preview.ts",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0"
+  }
+}

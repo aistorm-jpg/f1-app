@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": ["dist", "assets/fonts", "public", "bun.lock"]
+}
