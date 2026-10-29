@@ -1,55 +1,54 @@
-import { renderCalendar } from "./pages/calendar.ts";
-import { renderHome } from "./pages/home.ts";
-import { renderResults } from "./pages/results.ts";
-import { renderConstructors, renderDrivers } from "./pages/standings.ts";
-import { markup } from "./ui/html.ts";
-import { bindRetry, errorView, loadingView } from "./ui/states.ts";
+import { loadBoard } from "./data/jolpica.ts";
+import { markup } from "./html.ts";
+import { countdownParts, pad2 } from "./logic/board.ts";
+import { errorView, renderBoard } from "./render.ts";
 
-const pages = {
-  home: renderHome,
-  drivers: renderDrivers,
-  constructors: renderConstructors,
-  calendar: renderCalendar,
-  results: renderResults,
-} as const;
+const root = document.querySelector<HTMLElement>("#app");
 
-type PageId = keyof typeof pages;
+function tick(scope: ParentNode, targetIso: string): void {
+  const parts = countdownParts(targetIso, new Date());
+  const days = scope.querySelector<HTMLElement>("[data-cd='days']");
+  const hours = scope.querySelector<HTMLElement>("[data-cd='hours']");
+  const minutes = scope.querySelector<HTMLElement>("[data-cd='minutes']");
+  if (days) days.textContent = String(parts.days);
+  if (hours) hours.textContent = pad2(parts.hours);
+  if (minutes) minutes.textContent = pad2(parts.minutes);
+}
+
+function mountCountdown(scope: ParentNode): void {
+  const node = scope.querySelector<HTMLElement>("[data-countdown]");
+  const target = node?.dataset.at;
+  if (!target) return;
+  tick(scope, target);
+  window.setInterval(() => tick(scope, target), 1000);
+}
 
 function registerServiceWorker(): void {
   const host = location.hostname;
-  const local = host === "localhost" || host === "127.0.0.1";
-  if (local || !("serviceWorker" in navigator)) return;
+  if (host === "localhost" || host === "127.0.0.1" || !("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      // Siden virker uden service worker. Den skal bruge den for at kunne installeres.
-    });
+    navigator.serviceWorker.register("./sw.js").catch(() => undefined);
   });
 }
 
-async function run(render: (main: HTMLElement) => Promise<void>, main: HTMLElement): Promise<void> {
-  main.setAttribute("aria-busy", "true");
-  main.innerHTML = markup(loadingView());
+async function boot(): Promise<void> {
+  if (!root) return;
+  root.setAttribute("aria-busy", "true");
   try {
-    await render(main);
-    main.setAttribute("aria-busy", "false");
+    const board = await loadBoard();
+    root.innerHTML = markup(renderBoard(board, new Date()));
+    root.setAttribute("aria-busy", "false");
+    mountCountdown(root);
   } catch (error) {
     console.error(error);
-    main.innerHTML = markup(
-      errorView("Vi kunne ikke hente data fra Jolpica lige nu. Tjek forbindelsen og prøv igen."),
-    );
-    main.setAttribute("aria-busy", "false");
-    bindRetry(main, () => {
-      void run(render, main);
+    root.innerHTML = markup(errorView());
+    root.setAttribute("aria-busy", "false");
+    root.querySelector("[data-retry]")?.addEventListener("click", () => {
+      root.innerHTML = `<p class="state">henter sæsondata …</p>`;
+      void boot();
     });
   }
 }
 
-function boot(): void {
-  const page = document.body.dataset.page;
-  const main = document.querySelector<HTMLElement>("#indhold");
-  if (!main || !page || !(page in pages)) return;
-  registerServiceWorker();
-  void run(pages[page as PageId], main);
-}
-
-boot();
+registerServiceWorker();
+void boot();

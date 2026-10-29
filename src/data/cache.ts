@@ -40,6 +40,28 @@ export function cacheState(savedAt: number, now: number, ttlMs: number): "fresh"
  * Frisk cache bruges med det samme.
  * Er den for gammel, hentes der nyt. Fejler nettet, bruges den gamle kopi.
  */
+export async function loadCachedEntry<T>(options: {
+  store: KeyValueStore | null;
+  key: string;
+  ttlMs: number;
+  now?: number;
+  load: () => Promise<T>;
+}): Promise<{ data: T; savedAt: number }> {
+  const now = options.now ?? Date.now();
+  const entry = options.store ? readEntry<T>(options.store, options.key) : null;
+  if (entry && cacheState(entry.savedAt, now, options.ttlMs) === "fresh") {
+    return { data: entry.data, savedAt: entry.savedAt };
+  }
+  try {
+    const data = await options.load();
+    if (options.store) writeEntry(options.store, options.key, data, now);
+    return { data, savedAt: now };
+  } catch (error) {
+    if (entry) return { data: entry.data, savedAt: entry.savedAt };
+    throw error;
+  }
+}
+
 export async function loadCached<T>(options: {
   store: KeyValueStore | null;
   key: string;
@@ -47,17 +69,6 @@ export async function loadCached<T>(options: {
   now?: number;
   load: () => Promise<T>;
 }): Promise<T> {
-  const now = options.now ?? Date.now();
-  const entry = options.store ? readEntry<T>(options.store, options.key) : null;
-  if (entry && cacheState(entry.savedAt, now, options.ttlMs) === "fresh") {
-    return entry.data;
-  }
-  try {
-    const data = await options.load();
-    if (options.store) writeEntry(options.store, options.key, data, now);
-    return data;
-  } catch (error) {
-    if (entry) return entry.data;
-    throw error;
-  }
+  const result = await loadCachedEntry(options);
+  return result.data;
 }

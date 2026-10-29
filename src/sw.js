@@ -1,23 +1,13 @@
-/* Apex service worker.
-   Netværk først, og den gamle kopi hvis du er offline.
-   Jolpica er et andet domæne, så den caches i localStorage i stedet.
-   Hold fillisten ens med de filer build-scriptet lægger i dist/. */
-
-const CACHE = "apex-static-v1";
+/* Netværk først. Jolpica caches i localStorage, ikke her. */
+const CACHE = "apex-pitwall-v1";
 
 const PRECACHE = [
   "./",
   "./index.html",
-  "./koerer.html",
-  "./konstruktorer.html",
-  "./kalender.html",
-  "./resultater.html",
   "./404.html",
   "./styles.css",
   "./assets/app.js",
   "./manifest.json",
-  "./fonts/oswald.woff2",
-  "./fonts/outfit.woff2",
   "./icons/favicon-32.png",
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",
@@ -67,7 +57,7 @@ self.addEventListener("fetch", (event) => {
           const home = await caches.match("./index.html");
           if (home) return home;
         }
-        return new Response("Offline", {
+        return new Response("offline", {
           status: 503,
           headers: { "Content-Type": "text/plain; charset=utf-8" },
         });

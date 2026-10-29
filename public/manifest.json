@@ -1,12 +1,12 @@
 {
-  "name": "Apex — sæsonoversigt",
-  "short_name": "Apex",
-  "description": "Personlig oversigt over sæsonen med stilling, kalender og resultater. Tider i dansk tid.",
+  "name": "apex. pit wall",
+  "short_name": "pit wall",
+  "description": "Stilling, tider og seneste resultat. Dansk tid.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#070708",
-  "theme_color": "#070708",
+  "background_color": "#0b0b0c",
+  "theme_color": "#0b0b0c",
   "lang": "da",
   "icons": [
     {

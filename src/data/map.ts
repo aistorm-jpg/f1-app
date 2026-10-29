@@ -1,35 +1,49 @@
-import { countryName, raceDisplayName } from "../logic/labels.ts";
 import type {
-  ApiDriver,
-  ApiQualifyingResult,
-  ApiRace,
-  ApiResult,
-  ApiResultsResponse,
-  ApiScheduleResponse,
-  ApiSession,
-  ApiTeam,
-  ConstructorStanding,
-  DriverStanding,
-  LatestWinner,
+  ConstructorRow,
+  DriverRow,
   QualifyingRow,
-  Race,
-  ResultRow,
+  RaceResult,
+  RaceResultRow,
+  RaceWeekend,
   Session,
-  SessionKind,
-  StandingsTable,
-  Team,
-  Person,
-  ApiDriverStandingsResponse,
-  ApiConstructorStandingsResponse,
 } from "./types.ts";
 
-const SESSION_FIELDS: Array<[keyof ApiRace, SessionKind]> = [
-  ["FirstPractice", "practice1"],
-  ["SecondPractice", "practice2"],
-  ["ThirdPractice", "practice3"],
-  ["SprintQualifying", "sprintQualifying"],
-  ["Sprint", "sprint"],
-  ["Qualifying", "qualifying"],
+interface ApiSession {
+  date: string;
+  time?: string;
+}
+
+interface ApiDriver {
+  code?: string;
+  familyName: string;
+}
+
+interface ApiTeam {
+  constructorId: string;
+  name: string;
+}
+
+interface ApiRace {
+  round: string;
+  raceName: string;
+  date: string;
+  time?: string;
+  Circuit: { circuitId: string; circuitName: string };
+  FirstPractice?: ApiSession;
+  SecondPractice?: ApiSession;
+  ThirdPractice?: ApiSession;
+  SprintQualifying?: ApiSession;
+  Sprint?: ApiSession;
+  Qualifying?: ApiSession;
+}
+
+const SESSION_FIELDS: Array<[keyof ApiRace, string, boolean]> = [
+  ["FirstPractice", "1. træning", false],
+  ["SecondPractice", "2. træning", false],
+  ["ThirdPractice", "3. træning", false],
+  ["SprintQualifying", "sprint-kval.", false],
+  ["Sprint", "sprint", false],
+  ["Qualifying", "kvalifikation", false],
 ];
 
 export function sessionInstant(session: ApiSession): string | null {
@@ -39,161 +53,180 @@ export function sessionInstant(session: ApiSession): string | null {
   return `${session.date}T${time}`;
 }
 
-function numberValue(value: string | undefined, fallback = 0): number {
+function numberValue(value: string | number | undefined, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function personFrom(driver: ApiDriver): Person {
-  const code = driver.code?.trim() || driver.familyName.slice(0, 3).toUpperCase();
-  return {
-    id: driver.driverId,
-    code,
-    number: driver.permanentNumber ?? "",
-    givenName: driver.givenName,
-    familyName: driver.familyName,
-  };
-}
-
-function teamFrom(team: ApiTeam): Team {
-  return { id: team.constructorId, name: team.name };
-}
-
-export function mapRace(race: ApiRace): Race {
+export function mapWeekend(race: ApiRace): RaceWeekend {
   const sessions: Session[] = [];
-  for (const [field, kind] of SESSION_FIELDS) {
+  for (const [field, label, isRace] of SESSION_FIELDS) {
     const raw = race[field];
     if (!raw || typeof raw !== "object" || !("date" in raw)) continue;
     const start = sessionInstant(raw);
-    if (start) sessions.push({ kind, start });
+    if (start) sessions.push({ label, start, race: isRace });
   }
-  const raceStart = sessionInstant({ date: race.date, time: race.time });
-  if (raceStart) sessions.push({ kind: "race", start: raceStart });
+  const raceStart = sessionInstant({ date: race.date, time: race.time }) ?? "";
+  if (raceStart) sessions.push({ label: "løb", start: raceStart, race: true });
   sessions.sort((a, b) => a.start.localeCompare(b.start));
-
   return {
-    season: race.season,
     round: numberValue(race.round),
-    officialName: race.raceName,
-    name: raceDisplayName(race.raceName),
-    circuit: race.Circuit.circuitName,
-    locality: race.Circuit.Location.locality,
-    country: countryName(race.Circuit.Location.country),
-    sprintWeekend: sessions.some(
-      (session) => session.kind === "sprint" || session.kind === "sprintQualifying",
-    ),
+    name: race.raceName,
+    circuitId: race.Circuit.circuitId,
+    circuitName: race.Circuit.circuitName,
+    raceStart,
     sessions,
   };
 }
 
-export function mapSchedule(payload: ApiScheduleResponse): Race[] {
+export function mapSchedule(payload: {
+  MRData?: { RaceTable?: { Races?: ApiRace[] } };
+}): RaceWeekend[] {
   const races = payload.MRData?.RaceTable?.Races;
   if (!Array.isArray(races)) throw new Error("Uventet svar fra Jolpica");
   return races
-    .map(mapRace)
-    .filter((race) => race.round > 0)
+    .map(mapWeekend)
+    .filter((race) => race.round > 0 && race.raceStart)
     .sort((a, b) => a.round - b.round);
 }
 
-function emptyStandings(season: string, round: number): StandingsTable<never> {
-  return { season, round, rows: [] };
-}
-
-export function mapDriverStandings(
-  payload: ApiDriverStandingsResponse,
-): StandingsTable<DriverStanding> {
+export function mapDrivers(payload: {
+  MRData?: {
+    StandingsTable?: {
+      round?: string;
+      StandingsLists?: Array<{
+        round?: string;
+        DriverStandings?: Array<{
+          position: string;
+          points: string;
+          Driver: ApiDriver;
+          Constructors?: ApiTeam[];
+        }>;
+      }>;
+    };
+  };
+}): { round: number; rows: DriverRow[] } {
   const table = payload.MRData?.StandingsTable;
   const list = table?.StandingsLists?.[0];
-  if (!table || !list?.DriverStandings) {
-    return emptyStandings(table?.season ?? "", numberValue(table?.round));
-  }
   return {
-    season: list.season ?? table.season ?? "",
-    round: numberValue(list.round ?? table.round),
-    rows: list.DriverStandings.map((row) => ({
+    round: numberValue(list?.round ?? table?.round),
+    rows: (list?.DriverStandings ?? []).map((row) => ({
       position: numberValue(row.position),
+      familyName: row.Driver.familyName,
       points: numberValue(row.points),
-      wins: numberValue(row.wins),
-      driver: personFrom(row.Driver),
-      teams: (row.Constructors ?? []).map(teamFrom),
+      teamId: row.Constructors?.[0]?.constructorId ?? "",
     })),
   };
 }
 
-export function mapConstructorStandings(
-  payload: ApiConstructorStandingsResponse,
-): StandingsTable<ConstructorStanding> {
+export function mapConstructors(payload: {
+  MRData?: {
+    StandingsTable?: {
+      round?: string;
+      StandingsLists?: Array<{
+        round?: string;
+        ConstructorStandings?: Array<{
+          position: string;
+          points: string;
+          Constructor: ApiTeam;
+        }>;
+      }>;
+    };
+  };
+}): { round: number; rows: ConstructorRow[] } {
   const table = payload.MRData?.StandingsTable;
   const list = table?.StandingsLists?.[0];
-  if (!table || !list?.ConstructorStandings) {
-    return emptyStandings(table?.season ?? "", numberValue(table?.round));
-  }
   return {
-    season: list.season ?? table.season ?? "",
-    round: numberValue(list.round ?? table.round),
-    rows: list.ConstructorStandings.map((row) => ({
+    round: numberValue(list?.round ?? table?.round),
+    rows: (list?.ConstructorStandings ?? []).map((row) => ({
       position: numberValue(row.position),
+      name: row.Constructor.name,
       points: numberValue(row.points),
-      wins: numberValue(row.wins),
-      team: teamFrom(row.Constructor),
+      teamId: row.Constructor.constructorId,
     })),
   };
 }
 
-function firstRace(payload: ApiResultsResponse) {
+interface ApiResult {
+  position: string;
+  positionText?: string;
+  points: string;
+  grid?: string;
+  laps?: string;
+  status: string;
+  Time?: { time?: string };
+  FastestLap?: { rank?: string };
+  Driver: ApiDriver & { code?: string };
+  Constructor: ApiTeam;
+}
+
+interface ApiQuali {
+  position: string;
+  Driver: ApiDriver;
+  Constructor: ApiTeam;
+  Q1?: string;
+  Q2?: string;
+  Q3?: string;
+}
+
+function firstRace<T>(payload: { MRData?: { RaceTable?: { Races?: T[] } } }): T | null {
   const races = payload.MRData?.RaceTable?.Races;
   if (!Array.isArray(races)) throw new Error("Uventet svar fra Jolpica");
   return races[0] ?? null;
 }
 
-function mapResult(row: ApiResult): ResultRow {
-  return {
+export function mapQualifying(payload: {
+  MRData?: { RaceTable?: { Races?: Array<{ QualifyingResults?: ApiQuali[] }> } };
+}): QualifyingRow[] {
+  const rows = firstRace(payload)?.QualifyingResults ?? [];
+  return rows.map((row) => ({
     position: numberValue(row.position),
-    points: numberValue(row.points),
-    grid: numberValue(row.grid),
-    laps: numberValue(row.laps),
-    status: row.status,
-    time: row.Time?.time ?? null,
-    fastestLapRank: row.FastestLap?.rank ?? null,
-    driver: personFrom(row.Driver),
-    team: teamFrom(row.Constructor),
-  };
-}
-
-function mapQualiRow(row: ApiQualifyingResult): QualifyingRow {
-  return {
-    position: numberValue(row.position),
-    driver: personFrom(row.Driver),
-    team: teamFrom(row.Constructor),
+    familyName: row.Driver.familyName,
+    teamId: row.Constructor.constructorId,
     q1: row.Q1 ?? null,
     q2: row.Q2 ?? null,
     q3: row.Q3 ?? null,
+  }));
+}
+
+export function mapRaceResult(payload: {
+  MRData?: {
+    RaceTable?: {
+      Races?: Array<{
+        round?: string;
+        raceName?: string;
+        Results?: ApiResult[];
+      }>;
+    };
   };
-}
-
-export function mapRaceResults(payload: ApiResultsResponse): ResultRow[] {
-  return (firstRace(payload)?.Results ?? []).map(mapResult);
-}
-
-export function mapSprintResults(payload: ApiResultsResponse): ResultRow[] {
-  return (firstRace(payload)?.SprintResults ?? []).map(mapResult);
-}
-
-export function mapQualifying(payload: ApiResultsResponse): QualifyingRow[] {
-  return (firstRace(payload)?.QualifyingResults ?? []).map(mapQualiRow);
-}
-
-export function mapLatestWinner(payload: ApiResultsResponse): LatestWinner | null {
+}): RaceResult | null {
   const race = firstRace(payload);
-  const winner = race?.Results?.[0];
-  if (!race || !winner) return null;
+  const results = race?.Results;
+  if (!race || !results?.length) return null;
+  const rows: RaceResultRow[] = results.map((row) => {
+    const retired = row.positionText === "R" || row.status === "Retired";
+    return {
+      position: retired ? null : numberValue(row.position),
+      familyName: row.Driver.familyName,
+      teamId: row.Constructor.constructorId,
+      grid: numberValue(row.grid),
+      laps: numberValue(row.laps),
+      status: row.status,
+      time: row.Time?.time ?? null,
+      points: numberValue(row.points),
+      fastestLap: row.FastestLap?.rank === "1",
+    };
+  });
+  const podium = results.slice(0, 3).map((row) => ({
+    code: row.Driver.code ?? row.Driver.familyName.slice(0, 3).toUpperCase(),
+    teamId: row.Constructor.constructorId,
+    teamName: row.Constructor.name,
+  }));
   return {
     round: numberValue(race.round),
-    raceName: raceDisplayName(race.raceName ?? ""),
-    date: sessionInstant({ date: race.date ?? "", time: race.time }) ?? "",
-    driver: personFrom(winner.Driver),
-    team: teamFrom(winner.Constructor),
-    time: winner.Time?.time ?? null,
-    points: numberValue(winner.points),
+    name: race.raceName ?? "",
+    laps: rows[0]?.laps ?? 0,
+    rows,
+    podium,
   };
 }
