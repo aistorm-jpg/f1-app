@@ -86,3 +86,20 @@ export async function loadBoard(options?: { fresh?: boolean }): Promise<BoardDat
     fetchedAt: Math.max(weekends.savedAt, drivers.savedAt, constructors.savedAt, result.savedAt),
   };
 }
+
+/** Kvalifikation og løb for én runde. Samme cache som resten af sæsonen. */
+export async function loadRound(
+  round: number,
+  options?: { fresh?: boolean },
+): Promise<{ qualifying: QualifyingRow[]; result: RaceResult | null }> {
+  const ttl = options?.fresh ? 0 : CACHE_TTL.resultsMs;
+  const [qualifying, result] = await Promise.all([
+    cached(`qualifying-${round}`, ttl, async () =>
+      mapQualifying(await getJson(`${SEASON}/${round}/qualifying.json?limit=100`)),
+    ),
+    cached(`result-${round}`, ttl, async () =>
+      mapRaceResult(await getJson(`${SEASON}/${round}/results.json?limit=100`)),
+    ),
+  ]);
+  return { qualifying: qualifying.data, result: result.data };
+}

@@ -2,6 +2,8 @@
 
 En enkelt, mørk side med sæsonen 2026. Nedtælling til næste grand prix, tider i dansk tid, kører- og konstruktørstilling, og seneste kvalifikation og løb.
 
+Sproget er dansk, til du vælger engelsk. Skiftet `da / en` ligger i statuslinjen. Valget gemmes i browseren, og `?lang=en` kan deles. Datoer og ugedage følger sproget. Klokken er stadig dansk tid, `Europe/Copenhagen`, og hedder "danish time" på engelsk.
+
 Teksten er systemets monospace. Den eneste høje farve er den røde nedtælling, `#E10600`. Der er ingen officielle logoer.
 
 ## Det skal du bruge
@@ -17,13 +19,13 @@ bun run dev
 
 Åbn [http://localhost:3000/f1-app/](http://localhost:3000/f1-app/). Roden sender dig videre, så stien er den samme som på GitHub Pages.
 
-| Kommando          | Hvad den gør                           |
-| ----------------- | -------------------------------------- |
-| `bun test`        | Tester tid, søjler, banekort og cache  |
-| `bun run lint`    | oxlint                                 |
-| `bun run format`  | oxfmt                                  |
-| `bun run build`   | Statisk site i `dist/` via `bun build` |
-| `bun run preview` | Viser `dist/` under `/f1-app/`         |
+| Kommando          | Hvad den gør                                 |
+| ----------------- | -------------------------------------------- |
+| `bun test`        | Tester tid, søjler, runde, banekort og cache |
+| `bun run lint`    | oxlint                                       |
+| `bun run format`  | oxfmt                                        |
+| `bun run build`   | Statisk site i `dist/` via `bun build`       |
+| `bun run preview` | Viser `dist/` under `/f1-app/`               |
 
 ## Sådan er koden skruet sammen
 
@@ -48,7 +50,9 @@ Tallene kommer fra [Jolpica](https://api.jolpi.ca/ergast/f1/) i browseren. Sæso
 
 Kalenderen caches i 6 timer. Stilling og resultater caches i 5 minutter. Fejler nettet, vises den gamle kopi. Ellers er der en kort fejl og en knap til at prøve igen.
 
-Nedtællingen går til næste løbsstart og opdateres hvert sekund. Den viser dage, timer og minutter.
+Nedtællingen går til næste løbsstart. Den viser dage, timer, minutter og sekunder, og sekundtallet skifter hvert sekund. Mens fanen er skjult, står uret stille for at spare batteri, og det stiller sig igen, når du kommer tilbage. `prefers-reduced-motion` slår blink og puls fra. Selve tallene skifter stadig.
+
+Over kvalifikation og løb kan du vælge en tidligere runde, for eksempel `r18 · united states gp`. Valget ligger i adressen som `?runde=12`, så linket kan deles. Under en live-session er live-tavlen standard, indtil du vælger en runde.
 
 ## Når der køres
 
@@ -65,6 +69,8 @@ Banekortet tegnes fra rigtige koordinater (Tomislav Bacinger, [f1-circuits](http
 ## PWA
 
 `manifest.json` og service workeren gør siden installerbar. På iPhone: Safari, Del, **Føj til hjemmeskærm**. Service workeren registreres ikke på `localhost`.
+
+En ny udgivelse når også en side, der er gemt på hjemmeskærmen. Workeren henter sig selv på ny, smider den gamle cache ud og genindlæser siden én gang. Den gemmer ikke sin egen fil, så den ikke kan sidde fast på en gammel udgave.
 
 ## GitHub Pages
 
