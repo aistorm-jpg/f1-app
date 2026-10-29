@@ -1,22 +1,26 @@
-/**
- * Alle viste tidspunkter er danske.
- * Vi lægger ikke selv +1 eller +2 timer til. `Intl` kender sommertid
- * i Europe/Copenhagen, så skiftet i marts og oktober bliver rigtigt.
- */
+/** Dansk tid. Sommertid klares af Intl, ikke af et fast timetal. */
 export const COPENHAGEN_TZ = "Europe/Copenhagen";
 
-const clockFormat = new Intl.DateTimeFormat("da-DK", {
-  timeZone: COPENHAGEN_TZ,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
+const WEEKDAYS = ["søn", "man", "tir", "ons", "tor", "fre", "lør"] as const;
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
-const dateFormat = new Intl.DateTimeFormat("da-DK", {
+const partsFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: COPENHAGEN_TZ,
   weekday: "short",
   day: "numeric",
-  month: "short",
+  month: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
 });
 
 const offsetFormat = new Intl.DateTimeFormat("en-US", {
@@ -25,39 +29,59 @@ const offsetFormat = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
 });
 
-function asDate(iso: string): Date | null {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
+export interface CopenhagenParts {
+  weekday: (typeof WEEKDAYS)[number];
+  day: number;
+  month: number;
+  hour: string;
+  minute: string;
 }
 
-/** Klokkeslæt i København, fx "21.00". */
+export function copenhagenParts(instant: Date): CopenhagenParts | null {
+  if (Number.isNaN(instant.getTime())) return null;
+  const parts = partsFormat.formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const weekday = WEEKDAY_INDEX[get("weekday")];
+  const day = Number(get("day"));
+  const month = Number(get("month"));
+  if (weekday === undefined || !day || !month) return null;
+  return {
+    weekday: WEEKDAYS[weekday] ?? "man",
+    day,
+    month,
+    hour: get("hour"),
+    minute: get("minute"),
+  };
+}
+
+/** "19:30" */
 export function formatDanishClock(iso: string): string {
-  const date = asDate(iso);
-  if (!date) return "–";
-  const parts = clockFormat.formatToParts(date);
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-  return `${hour}.${minute}`;
+  const parts = copenhagenParts(new Date(iso));
+  if (!parts) return "–";
+  return `${parts.hour}:${parts.minute}`;
 }
 
-/** Kort dansk dato og klokkeslæt, fx "søn. 1. nov. kl. 21.00". */
-export function formatDanishDateTime(iso: string): string {
-  const date = asDate(iso);
-  if (!date) return "–";
-  return `${dateFormat.format(date)} kl. ${formatDanishClock(iso)}`;
+/** "fre 30 okt" eller "søn  1 nov" */
+export function formatDanishDay(iso: string): string {
+  const parts = copenhagenParts(new Date(iso));
+  if (!parts) return "–";
+  const month = MONTHS[parts.month - 1] ?? "";
+  return `${parts.weekday} ${String(parts.day).padStart(2, " ")} ${month}`;
 }
 
-/**
- * Offset i minutter for et bestemt øjeblik.
- * Positiv værdi betyder foran UTC. Bruges af testene til at låse sommertid.
- */
+/** "28 okt 21:45" */
+export function formatFetchedAt(instant: Date): string {
+  const parts = copenhagenParts(instant);
+  if (!parts) return "–";
+  const month = MONTHS[parts.month - 1] ?? "";
+  return `${parts.day} ${month} ${parts.hour}:${parts.minute}`;
+}
+
 export function copenhagenOffsetMinutes(instant: Date): number {
   const name =
     offsetFormat.formatToParts(instant).find((part) => part.type === "timeZoneName")?.value ?? "";
   const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
   if (!match) return 0;
   const sign = match[1] === "-" ? -1 : 1;
-  const hours = Number(match[2]);
-  const minutes = Number(match[3] ?? "0");
-  return sign * (hours * 60 + minutes);
+  return sign * (Number(match[2]) * 60 + Number(match[3] ?? "0"));
 }

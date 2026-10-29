@@ -1,37 +1,25 @@
 import { SEASON } from "../config.ts";
-import { loadCached, type KeyValueStore } from "./cache.ts";
-import {
-  mapConstructorStandings,
-  mapDriverStandings,
-  mapLatestWinner,
-  mapQualifying,
-  mapRaceResults,
-  mapSchedule,
-  mapSprintResults,
-} from "./map.ts";
-import type {
-  ApiConstructorStandingsResponse,
-  ApiDriverStandingsResponse,
-  ApiResultsResponse,
-  ApiScheduleResponse,
-  ConstructorStanding,
-  DriverStanding,
-  LatestWinner,
-  QualifyingRow,
-  Race,
-  ResultRow,
-  StandingsTable,
-} from "./types.ts";
+import { loadCachedEntry, type KeyValueStore } from "./cache.ts";
+import { mapConstructors, mapDrivers, mapQualifying, mapRaceResult, mapSchedule } from "./map.ts";
+import type { ConstructorRow, DriverRow, QualifyingRow, RaceResult, RaceWeekend } from "./types.ts";
 
 const BASE = "https://api.jolpi.ca/ergast/f1";
-const PREFIX = "apex.v1";
+const PREFIX = "apex.v2";
 
-/** Kalenderen ændrer sig sjældent. Stilling og resultater må gerne være få minutter gamle. */
 export const CACHE_TTL = {
   scheduleMs: 6 * 60 * 60 * 1000,
   standingsMs: 5 * 60 * 1000,
   resultsMs: 5 * 60 * 1000,
 } as const;
+
+export interface BoardData {
+  weekends: RaceWeekend[];
+  drivers: { round: number; rows: DriverRow[] };
+  constructors: { round: number; rows: ConstructorRow[] };
+  qualifying: QualifyingRow[];
+  result: RaceResult | null;
+  fetchedAt: number;
+}
 
 function browserStore(): KeyValueStore | null {
   try {
@@ -50,14 +38,12 @@ async function getJson<T>(path: string): Promise<T> {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(12_000),
   });
-  if (!response.ok) {
-    throw new Error(`Jolpica svarede ${response.status} på ${path}`);
-  }
+  if (!response.ok) throw new Error(`Jolpica svarede ${response.status}`);
   return (await response.json()) as T;
 }
 
-function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
-  return loadCached({
+function cached<T>(key: string, ttlMs: number, load: () => Promise<T>) {
+  return loadCachedEntry({
     store: browserStore(),
     key: `${PREFIX}.${SEASON}.${key}`,
     ttlMs,
@@ -65,57 +51,38 @@ function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<
   });
 }
 
-export function getSchedule(): Promise<Race[]> {
-  return cached("schedule", CACHE_TTL.scheduleMs, async () => {
-    const payload = await getJson<ApiScheduleResponse>(`${SEASON}.json?limit=100`);
-    return mapSchedule(payload);
-  });
-}
+export async function loadBoard(options?: { fresh?: boolean }): Promise<BoardData> {
+  const standingsTtl = options?.fresh ? 0 : CACHE_TTL.standingsMs;
+  const resultsTtl = options?.fresh ? 0 : CACHE_TTL.resultsMs;
+  const [weekends, drivers, constructors, result] = await Promise.all([
+    cached("schedule", CACHE_TTL.scheduleMs, async () =>
+      mapSchedule(await getJson(`${SEASON}.json?limit=100`)),
+    ),
+    cached("drivers", standingsTtl, async () =>
+      mapDrivers(await getJson(`${SEASON}/driverStandings.json?limit=100`)),
+    ),
+    cached("constructors", standingsTtl, async () =>
+      mapConstructors(await getJson(`${SEASON}/constructorStandings.json?limit=100`)),
+    ),
+    cached("last-result", resultsTtl, async () =>
+      mapRaceResult(await getJson(`${SEASON}/last/results.json?limit=100`)),
+    ),
+  ]);
 
-export function getDriverStandings(): Promise<StandingsTable<DriverStanding>> {
-  return cached("drivers", CACHE_TTL.standingsMs, async () => {
-    const payload = await getJson<ApiDriverStandingsResponse>(
-      `${SEASON}/driverStandings.json?limit=100`,
-    );
-    return mapDriverStandings(payload);
-  });
-}
+  const round = result.data?.round ?? 0;
+  const qualifying =
+    round > 0
+      ? await cached(`qualifying-${round}`, CACHE_TTL.resultsMs, async () =>
+          mapQualifying(await getJson(`${SEASON}/${round}/qualifying.json?limit=100`)),
+        )
+      : { data: [] as QualifyingRow[], savedAt: result.savedAt };
 
-export function getConstructorStandings(): Promise<StandingsTable<ConstructorStanding>> {
-  return cached("constructors", CACHE_TTL.standingsMs, async () => {
-    const payload = await getJson<ApiConstructorStandingsResponse>(
-      `${SEASON}/constructorStandings.json?limit=100`,
-    );
-    return mapConstructorStandings(payload);
-  });
-}
-
-export function getLatestWinner(): Promise<LatestWinner | null> {
-  return cached("latest-winner", CACHE_TTL.resultsMs, async () => {
-    const payload = await getJson<ApiResultsResponse>(`${SEASON}/last/results.json?limit=1`);
-    return mapLatestWinner(payload);
-  });
-}
-
-export function getRaceResults(round: number): Promise<ResultRow[]> {
-  return cached(`race-${round}`, CACHE_TTL.resultsMs, async () => {
-    const payload = await getJson<ApiResultsResponse>(`${SEASON}/${round}/results.json?limit=100`);
-    return mapRaceResults(payload);
-  });
-}
-
-export function getQualifying(round: number): Promise<QualifyingRow[]> {
-  return cached(`qualifying-${round}`, CACHE_TTL.resultsMs, async () => {
-    const payload = await getJson<ApiResultsResponse>(
-      `${SEASON}/${round}/qualifying.json?limit=100`,
-    );
-    return mapQualifying(payload);
-  });
-}
-
-export function getSprintResults(round: number): Promise<ResultRow[]> {
-  return cached(`sprint-${round}`, CACHE_TTL.resultsMs, async () => {
-    const payload = await getJson<ApiResultsResponse>(`${SEASON}/${round}/sprint.json?limit=100`);
-    return mapSprintResults(payload);
-  });
+  return {
+    weekends: weekends.data,
+    drivers: drivers.data,
+    constructors: constructors.data,
+    qualifying: qualifying.data,
+    result: result.data,
+    fetchedAt: Math.max(weekends.savedAt, drivers.savedAt, constructors.savedAt, result.savedAt),
+  };
 }
