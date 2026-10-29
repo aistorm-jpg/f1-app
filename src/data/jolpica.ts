@@ -51,18 +51,20 @@ function cached<T>(key: string, ttlMs: number, load: () => Promise<T>) {
   });
 }
 
-export async function loadBoard(): Promise<BoardData> {
+export async function loadBoard(options?: { fresh?: boolean }): Promise<BoardData> {
+  const standingsTtl = options?.fresh ? 0 : CACHE_TTL.standingsMs;
+  const resultsTtl = options?.fresh ? 0 : CACHE_TTL.resultsMs;
   const [weekends, drivers, constructors, result] = await Promise.all([
     cached("schedule", CACHE_TTL.scheduleMs, async () =>
       mapSchedule(await getJson(`${SEASON}.json?limit=100`)),
     ),
-    cached("drivers", CACHE_TTL.standingsMs, async () =>
+    cached("drivers", standingsTtl, async () =>
       mapDrivers(await getJson(`${SEASON}/driverStandings.json?limit=100`)),
     ),
-    cached("constructors", CACHE_TTL.standingsMs, async () =>
+    cached("constructors", standingsTtl, async () =>
       mapConstructors(await getJson(`${SEASON}/constructorStandings.json?limit=100`)),
     ),
-    cached("last-result", CACHE_TTL.resultsMs, async () =>
+    cached("last-result", resultsTtl, async () =>
       mapRaceResult(await getJson(`${SEASON}/last/results.json?limit=100`)),
     ),
   ]);

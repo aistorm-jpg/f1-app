@@ -88,6 +88,12 @@ b {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
+.live .dot.off {
+  background: var(--dim);
+  box-shadow: none;
+  animation: none;
+}
+
 .cur {
   display: inline-block;
   width: 0.6em;
@@ -299,6 +305,18 @@ h2 span {
   grid-template-columns: 2.5ch 1ch 12ch 1fr 4ch 5ch;
 }
 
+.drv.shifting p {
+  grid-template-columns: 5.5ch 1ch 12ch 1fr 4ch 5ch;
+}
+
+.con.shifting p {
+  grid-template-columns: 5.5ch 1ch 13ch 1fr 4ch 5ch;
+}
+
+.lb p {
+  grid-template-columns: 2.5ch 1ch 8ch 1fr 10ch;
+}
+
 .con p {
   grid-template-columns: 2.5ch 1ch 13ch 1fr 4ch 5ch;
 }
@@ -433,8 +451,9 @@ footer {
     grid-template-columns: 1fr;
   }
 
-  .drv p {
-    grid-template-columns: 2.5ch 1ch 11ch 1fr 4ch 4ch;
+  .drv p,
+  .drv.shifting p {
+    grid-template-columns: 4.5ch 1ch 11ch 1fr 4ch 4ch;
   }
 
   .con p {

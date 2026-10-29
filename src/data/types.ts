@@ -1,4 +1,14 @@
+export type SessionKind =
+  | "practice1"
+  | "practice2"
+  | "practice3"
+  | "sprintQualifying"
+  | "sprint"
+  | "qualifying"
+  | "race";
+
 export interface Session {
+  kind: SessionKind;
   label: string;
   start: string;
   race: boolean;
@@ -14,6 +24,7 @@ export interface RaceWeekend {
 }
 
 export interface DriverRow {
+  id: string;
   position: number;
   familyName: string;
   points: number;

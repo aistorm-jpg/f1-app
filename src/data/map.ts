@@ -6,6 +6,7 @@ import type {
   RaceResultRow,
   RaceWeekend,
   Session,
+  SessionKind,
 } from "./types.ts";
 
 interface ApiSession {
@@ -14,6 +15,7 @@ interface ApiSession {
 }
 
 interface ApiDriver {
+  driverId: string;
   code?: string;
   familyName: string;
 }
@@ -37,13 +39,13 @@ interface ApiRace {
   Qualifying?: ApiSession;
 }
 
-const SESSION_FIELDS: Array<[keyof ApiRace, string, boolean]> = [
-  ["FirstPractice", "1. træning", false],
-  ["SecondPractice", "2. træning", false],
-  ["ThirdPractice", "3. træning", false],
-  ["SprintQualifying", "sprint-kval.", false],
-  ["Sprint", "sprint", false],
-  ["Qualifying", "kvalifikation", false],
+const SESSION_FIELDS: Array<[keyof ApiRace, string, SessionKind]> = [
+  ["FirstPractice", "1. træning", "practice1"],
+  ["SecondPractice", "2. træning", "practice2"],
+  ["ThirdPractice", "3. træning", "practice3"],
+  ["SprintQualifying", "sprint-kval.", "sprintQualifying"],
+  ["Sprint", "sprint", "sprint"],
+  ["Qualifying", "kvalifikation", "qualifying"],
 ];
 
 export function sessionInstant(session: ApiSession): string | null {
@@ -60,14 +62,14 @@ function numberValue(value: string | number | undefined, fallback = 0): number {
 
 export function mapWeekend(race: ApiRace): RaceWeekend {
   const sessions: Session[] = [];
-  for (const [field, label, isRace] of SESSION_FIELDS) {
+  for (const [field, label, kind] of SESSION_FIELDS) {
     const raw = race[field];
     if (!raw || typeof raw !== "object" || !("date" in raw)) continue;
     const start = sessionInstant(raw);
-    if (start) sessions.push({ label, start, race: isRace });
+    if (start) sessions.push({ kind, label, start, race: false });
   }
   const raceStart = sessionInstant({ date: race.date, time: race.time }) ?? "";
-  if (raceStart) sessions.push({ label: "løb", start: raceStart, race: true });
+  if (raceStart) sessions.push({ kind: "race", label: "løb", start: raceStart, race: true });
   sessions.sort((a, b) => a.start.localeCompare(b.start));
   return {
     round: numberValue(race.round),
@@ -111,6 +113,7 @@ export function mapDrivers(payload: {
   return {
     round: numberValue(list?.round ?? table?.round),
     rows: (list?.DriverStandings ?? []).map((row) => ({
+      id: row.Driver.driverId,
       position: numberValue(row.position),
       familyName: row.Driver.familyName,
       points: numberValue(row.points),

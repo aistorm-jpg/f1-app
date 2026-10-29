@@ -13,6 +13,8 @@ import {
   raceShort,
   teamLabel,
 } from "./logic/board.ts";
+import type { ProjectedStanding } from "./logic/points.ts";
+import { formatLiveGap, type SampleDriver } from "./live/sample.ts";
 import { teamColor } from "./logic/teams.ts";
 import { drawTrack } from "./logic/track.ts";
 import { formatDanishClock, formatDanishDay, formatFetchedAt } from "./logic/time.ts";
@@ -27,28 +29,76 @@ const kmFormat = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 3,
 });
 
-export function renderBoard(board: BoardData, now: Date): SafeHtml {
+export interface LiveOverlay {
+  on: boolean;
+  demo: boolean;
+  label: string;
+  segment: string;
+  note: string;
+  quali: SampleDriver[] | null;
+  race: SampleDriver[] | null;
+  drivers: ProjectedStanding[] | null;
+  constructors: ProjectedStanding[] | null;
+}
+
+export function renderBoard(
+  board: BoardData,
+  now: Date,
+  live: LiveOverlay | null = null,
+): SafeHtml {
   const next =
     board.weekends.find((race) => new Date(race.raceStart).getTime() > now.getTime()) ?? null;
   const nextSession = next?.sessions.find(
     (session) => new Date(session.start).getTime() > now.getTime(),
   );
   const fetched = formatFetchedAt(new Date(board.fetchedAt));
+  const pulsing = Boolean(live?.on);
   return html`
     <header class="top">
       <h1>apex<i>.</i> <span class="m">pit wall</span></h1>
       <p class="live">
-        <span class="dot"></span>live
-        ${nextSession ? html`<span class="x">· næste session: ${nextSession.label} ${weekday(nextSession.start)} ${formatDanishClock(nextSession.start)}</span>` : ""}
+        <span class="dot ${pulsing ? "" : "off"}"></span>live
+        ${
+          pulsing
+            ? html`<span class="x">· ${live?.demo ? "demo · " : ""}${live?.label ?? ""}</span>`
+            : nextSession
+              ? html`<span class="x"
+                  >· næste session: ${nextSession.label} ${weekday(nextSession.start)}
+                  ${formatDanishClock(nextSession.start)}</span
+                >`
+              : ""
+        }
         · data ${fetched}<span class="cur"></span>
       </p>
     </header>
     ${next ? hero(next, board.weekends.length, now) : seasonOver(board)}
     <div class="grid">
-      ${driverStandings(board)}
-      <section>${constructorStandings(board)} ${podium(board)}</section>
+      ${
+        live?.quali
+          ? liveQuali(live)
+          : board.result
+            ? qualifying(board.qualifying, board.result)
+            : html`<section>
+                <h2>kvalifikation<span>ingen data</span></h2>
+                <p class="note">ingen kvalifikationsresultater endnu.</p>
+              </section>`
+      }
+      ${
+        live?.race
+          ? liveRace(live)
+          : board.result
+            ? raceTable(board.result)
+            : html`<section>
+                <h2>løb<span>–</span></h2>
+                <p class="note">løbet er ikke kørt endnu.</p>
+              </section>`
+      }
     </div>
-    ${board.result ? html`<div class="grid">${qualifying(board.qualifying, board.result)}${raceTable(board.result)}</div>` : ""}
+    ${live?.note ? html`<p class="note">${live.note}</p>` : ""}
+    <div class="grid">
+      ${driverStandings(board, live)}
+      <section>${constructorStandings(board, live)} ${podium(board)}</section>
+    </div>
     <footer>
       <span>data: jolpica f1 api · hentet ${fetched}</span>
       <span>hobbyside · ikke tilknyttet formel 1</span>
@@ -140,22 +190,39 @@ function seasonOver(board: BoardData): SafeHtml {
   `;
 }
 
-function driverStandings(board: BoardData): SafeHtml {
-  const leader = board.drivers.rows[0]?.points ?? 0;
+function changeMark(change: number): SafeHtml {
+  if (change > 0) return html`<span class="up">▲${change}</span>`;
+  if (change < 0) return html`<span class="dn">▼${-change}</span>`;
+  return html``;
+}
+
+function driverStandings(board: BoardData, live: LiveOverlay | null): SafeHtml {
+  const projected = live?.on ? live.drivers : null;
+  const byId = new Map(board.drivers.rows.map((row) => [row.id, row]));
+  const rows = projected
+    ? projected.flatMap((item) => {
+        const row = byId.get(item.id);
+        return row
+          ? [{ ...row, position: item.position, points: item.points, change: item.change }]
+          : [];
+      })
+    : board.drivers.rows.map((row) => ({ ...row, change: 0 }));
+  const leader = rows[0]?.points ?? 0;
+  const tag = projected ? `efter r${board.drivers.round} · live` : `efter r${board.drivers.round}`;
   return html`
     <section>
-      <h2>kørerstilling<span>efter r${board.drivers.round}</span></h2>
-      <div class="t drv">
+      <h2>kørerstilling<span>${tag}</span></h2>
+      <div class="t drv ${projected ? "shifting" : ""}">
         <p class="hd">
           <span>#</span><span></span><span>kører</span><span></span><span class="n">pts</span
           ><span class="n">bag</span>
         </p>
-        ${board.drivers.rows.map((row) => {
+        ${rows.map((row) => {
           const bar = pointsBar(row.points, leader);
           return html`<p style="--c:${teamColor(row.teamId)}">
-            <span class="m">${row.position}</span><span class="k"></span
-            ><span>${row.familyName.toLowerCase()}</span
-            ><span class="bar">${bar.filled}<i>${bar.rest}</i></span
+            <span class="m">${row.position} ${changeMark(row.change)}</span><span class="k"></span
+            ><span>${row.familyName.toLowerCase()}</span> ><span class="bar"
+              >${bar.filled}<i>${bar.rest}</i></span
             ><span class="n"><b>${formatPoints(row.points)}</b></span
             ><span class="n m">${gapText(row.points, leader)}</span>
           </p>`;
@@ -165,26 +232,101 @@ function driverStandings(board: BoardData): SafeHtml {
   `;
 }
 
-function constructorStandings(board: BoardData): SafeHtml {
-  const leader = board.constructors.rows[0]?.points ?? 0;
+function constructorStandings(board: BoardData, live: LiveOverlay | null): SafeHtml {
+  const projected = live?.on ? live.constructors : null;
+  const byId = new Map(board.constructors.rows.map((row) => [row.teamId, row]));
+  const rows = projected
+    ? projected.flatMap((item) => {
+        const row = byId.get(item.id);
+        return row
+          ? [{ ...row, position: item.position, points: item.points, change: item.change }]
+          : [];
+      })
+    : board.constructors.rows.map((row) => ({ ...row, change: 0 }));
+  const leader = rows[0]?.points ?? 0;
+  const tag = projected
+    ? `efter r${board.constructors.round} · live`
+    : `efter r${board.constructors.round}`;
   return html`
-    <h2>konstruktørstilling<span>efter r${board.constructors.round}</span></h2>
-    <div class="t con">
+    <h2>konstruktørstilling<span>${tag}</span></h2>
+    <div class="t con ${projected ? "shifting" : ""}">
       <p class="hd">
         <span>#</span><span></span><span>hold</span><span></span><span class="n">pts</span
         ><span class="n gap">bag</span>
       </p>
-      ${board.constructors.rows.map((row) => {
+      ${rows.map((row) => {
         const bar = pointsBar(row.points, leader);
         return html`<p style="--c:${teamColor(row.teamId)}">
-          <span class="m">${row.position}</span><span class="k"></span
-          ><span>${teamLabel(row.name)}</span
-          ><span class="bar">${bar.filled}<i>${bar.rest}</i></span
+          <span class="m">${row.position} ${changeMark(row.change)}</span><span class="k"></span
+          ><span>${teamLabel(row.name)}</span> ><span class="bar"
+            >${bar.filled}<i>${bar.rest}</i></span
           ><span class="n"><b>${formatPoints(row.points)}</b></span
           ><span class="n m gap">${gapText(row.points, leader)}</span>
         </p>`;
       })}
     </div>
+  `;
+}
+
+function liveQuali(live: LiveOverlay): SafeHtml {
+  const rows = live.quali ?? [];
+  const best = rows.map((row) => row.bestLap).find(Boolean) ?? null;
+  return html`
+    <section>
+      <h2>kvalifikation<span>${live.segment} · live</span></h2>
+      <div class="t lb">
+        <p class="hd">
+          <span>#</span><span></span><span>kører</span><span class="n">bedste</span
+          ><span class="n">gap</span>
+        </p>
+        ${rows.map(
+          (row, index) => html`
+            <p style="--c:${teamColor(row.teamId)}">
+              <span class="m">${index + 1}</span><span class="k"></span
+              ><span>${row.code.toLowerCase()}</span>
+              <span class="n"
+                >${row.bestLap && row.bestLap === best ? html`<b class="hot">${row.bestLap}</b>` : (row.bestLap ?? "–")}</span
+              >
+              <span class="n m">${formatLiveGap(row.gap)}</span>
+            </p>
+          `,
+        )}
+      </div>
+    </section>
+  `;
+}
+
+function liveRace(live: LiveOverlay): SafeHtml {
+  const rows = (live.race ?? []).filter((row) => !row.retired);
+  const retired = (live.race ?? []).filter((row) => row.retired);
+  return html`
+    <section>
+      <h2>løb<span>live</span></h2>
+      <div class="t lb">
+        <p class="hd">
+          <span>#</span><span></span><span>kører</span><span class="n">gap</span
+          ><span class="n">int</span>
+        </p>
+        ${rows.map(
+          (row, index) => html`
+            <p style="--c:${teamColor(row.teamId)}">
+              <span class="m">${index + 1}</span><span class="k"></span
+              ><span>${row.code.toLowerCase()}</span>
+              <span class="n">${formatLiveGap(row.gap)}</span>
+              <span class="n m">${formatLiveGap(row.interval)}</span>
+            </p>
+          `,
+        )}
+        ${retired.map(
+          (row) => html`
+            <p style="--c:${teamColor(row.teamId)}">
+              <span class="m">–</span><span class="k"></span><span>${row.code.toLowerCase()}</span>
+              <span class="n m">udgået</span><span></span>
+            </p>
+          `,
+        )}
+      </div>
+    </section>
   `;
 }
 

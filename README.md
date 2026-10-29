@@ -50,6 +50,14 @@ Kalenderen caches i 6 timer. Stilling og resultater caches i 5 minutter. Fejler 
 
 Nedtællingen går til næste løbsstart og opdateres hvert sekund. Den viser dage, timer og minutter.
 
+## Når der køres
+
+Den røde prik pulserer kun, mens en session er i gang (fra ti minutter før start og et stykke tid efter, alt efter om det er træning, kval eller løb).
+
+OpenF1 kan levere tider cirka hvert 8. sekund, men kun gratis når sessionen ikke længere regnes som live hos dem. Selve live-strømmen koster penge, og siden har ingen nøgle. Derfor tjekkes Jolpica cirka hvert 30. sekund i det vindue. De tal kan halte. Når sessionen er slut, vises Jolpicas officielle resultat igen.
+
+`?demo=live` viser en optaget tavle fra USA 2026, så man kan se live-layoutet uden at der køres. Pointene i demoen er lagt oven i stillingen og er ikke officielle.
+
 Alle tider er `Europe/Copenhagen`. Sommertid ligger i `Intl`.
 
 Banekortet tegnes fra rigtige koordinater (Tomislav Bacinger, [f1-circuits](https://github.com/bacinger/f1-circuits), MIT). Start/mål-langsiden lægges vandret, den røde streg er start, og teksten siger om banen køres med eller mod uret. Licensen ligger i `src/data/CIRCUITS-LICENSE.txt`.
