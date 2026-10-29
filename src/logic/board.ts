@@ -86,19 +86,22 @@ export interface CountdownParts {
   days: number;
   hours: number;
   minutes: number;
+  seconds: number;
   elapsed: boolean;
 }
 
 export function countdownParts(targetIso: string, now: Date): CountdownParts {
   const target = new Date(targetIso).getTime();
-  if (!Number.isFinite(target)) return { days: 0, hours: 0, minutes: 0, elapsed: true };
+  const zero = { days: 0, hours: 0, minutes: 0, seconds: 0, elapsed: true };
+  if (!Number.isFinite(target)) return zero;
   const total = target - now.getTime();
-  if (total <= 0) return { days: 0, hours: 0, minutes: 0, elapsed: true };
-  const minutesTotal = Math.floor(total / 60_000);
+  if (total <= 0) return zero;
+  const secondsTotal = Math.floor(total / 1000);
   return {
-    days: Math.floor(minutesTotal / (60 * 24)),
-    hours: Math.floor((minutesTotal % (60 * 24)) / 60),
-    minutes: minutesTotal % 60,
+    days: Math.floor(secondsTotal / 86_400),
+    hours: Math.floor((secondsTotal % 86_400) / 3600),
+    minutes: Math.floor((secondsTotal % 3600) / 60),
+    seconds: secondsTotal % 60,
     elapsed: false,
   };
 }

@@ -1,6 +1,12 @@
 import circuits from "./data/circuits.json";
 import type { BoardData } from "./data/jolpica.ts";
-import type { QualifyingRow, RaceResultRow, RaceWeekend, Session } from "./data/types.ts";
+import type {
+  QualifyingRow,
+  RaceResult,
+  RaceResultRow,
+  RaceWeekend,
+  Session,
+} from "./data/types.ts";
 import { html, type SafeHtml } from "./html.ts";
 import {
   countdownParts,
@@ -16,6 +22,7 @@ import {
 import type { ProjectedStanding } from "./logic/points.ts";
 import { formatLiveGap, type SampleDriver } from "./live/sample.ts";
 import { teamColor } from "./logic/teams.ts";
+import { roundMenuLabel, selectableRounds } from "./logic/round.ts";
 import { drawTrack } from "./logic/track.ts";
 import { formatDanishClock, formatDanishDay, formatFetchedAt } from "./logic/time.ts";
 
@@ -41,10 +48,19 @@ export interface LiveOverlay {
   constructors: ProjectedStanding[] | null;
 }
 
+export interface ResultsPane {
+  round: number | null;
+  liveDefault: boolean;
+  status: "board" | "ready" | "error";
+  qualifying: QualifyingRow[];
+  result: RaceResult | null;
+}
+
 export function renderBoard(
   board: BoardData,
   now: Date,
   live: LiveOverlay | null = null,
+  pane: ResultsPane | null = null,
 ): SafeHtml {
   const next =
     board.weekends.find((race) => new Date(race.raceStart).getTime() > now.getTime()) ?? null;
@@ -53,6 +69,10 @@ export function renderBoard(
   );
   const fetched = formatFetchedAt(new Date(board.fetchedAt));
   const pulsing = Boolean(live?.on);
+  const useLive = Boolean(live?.on) && (pane == null || pane.liveDefault);
+  const qualiRows = pane?.status === "ready" ? pane.qualifying : board.qualifying;
+  const raceResult = pane?.status === "ready" ? pane.result : board.result;
+  const standingsLive = useLive ? live : null;
   return html`
     <header class="top">
       <h1>apex<i>.</i> <span class="m">pit wall</span></h1>
@@ -72,37 +92,100 @@ export function renderBoard(
       </p>
     </header>
     ${next ? hero(next, board.weekends.length, now) : seasonOver(board)}
+    ${roundPicker(board, live, pane, useLive)}
+    ${
+      pane?.status === "error"
+        ? html`<p class="state">
+            kunne ikke hente runden. <button type="button" data-round-retry>prøv igen</button>
+          </p>`
+        : html`<div class="grid" data-results>
+            ${
+              useLive && live?.quali
+                ? liveQuali(live)
+                : raceResult
+                  ? qualifying(qualiRows, raceResult)
+                  : html`<section>
+                      <h2>kvalifikation<span>ingen data</span></h2>
+                      <p class="note">ingen kvalifikationsresultater endnu.</p>
+                    </section>`
+            }
+            ${
+              useLive && live?.race
+                ? liveRace(live)
+                : raceResult
+                  ? raceTable(raceResult)
+                  : html`<section>
+                      <h2>løb<span>–</span></h2>
+                      <p class="note">løbet er ikke kørt endnu.</p>
+                    </section>`
+            }
+          </div>`
+    }
+    ${useLive && live?.note ? html`<p class="note">${live.note}</p>` : ""}
     <div class="grid">
-      ${
-        live?.quali
-          ? liveQuali(live)
-          : board.result
-            ? qualifying(board.qualifying, board.result)
-            : html`<section>
-                <h2>kvalifikation<span>ingen data</span></h2>
-                <p class="note">ingen kvalifikationsresultater endnu.</p>
-              </section>`
-      }
-      ${
-        live?.race
-          ? liveRace(live)
-          : board.result
-            ? raceTable(board.result)
-            : html`<section>
-                <h2>løb<span>–</span></h2>
-                <p class="note">løbet er ikke kørt endnu.</p>
-              </section>`
-      }
-    </div>
-    ${live?.note ? html`<p class="note">${live.note}</p>` : ""}
-    <div class="grid">
-      ${driverStandings(board, live)}
-      <section>${constructorStandings(board, live)} ${podium(board)}</section>
+      ${driverStandings(board, standingsLive)}
+      <section>${constructorStandings(board, standingsLive)} ${podium(board)}</section>
     </div>
     <footer>
       <span>data: jolpica f1 api · hentet ${fetched}</span>
       <span>hobbyside · ikke tilknyttet formel 1</span>
     </footer>
+  `;
+}
+
+function roundPicker(
+  board: BoardData,
+  live: LiveOverlay | null,
+  pane: ResultsPane | null,
+  useLive: boolean,
+): SafeHtml {
+  const last = board.result?.round ?? 0;
+  const numbers = selectableRounds(board.weekends, last).slice().reverse();
+  if (numbers.length === 0) return html``;
+  const names = new Map(board.weekends.map((race) => [race.round, race.name]));
+  const picked = useLive ? null : (pane?.round ?? last);
+  const label =
+    picked == null ? "live · nuværende" : roundMenuLabel(picked, names.get(picked) ?? "");
+  const option = (value: string, text: string, selected: boolean) => html`
+    <li
+      id="round-opt-${value}"
+      role="option"
+      data-round-option="${value}"
+      aria-selected="${selected ? "true" : "false"}"
+    >
+      ${text}
+    </li>
+  `;
+  return html`
+    <div class="roundpick" data-round-picker>
+      <label id="round-lbl" class="lbl" for="round-btn">runde</label>
+      <button
+        id="round-btn"
+        type="button"
+        class="roundbtn"
+        data-round-button
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        aria-controls="round-list"
+      >
+        ${label}
+      </button>
+      <p class="m roundstatus" data-round-status></p>
+      <ul
+        id="round-list"
+        class="roundlist"
+        role="listbox"
+        aria-labelledby="round-lbl"
+        data-round-list
+        hidden
+        tabindex="-1"
+      >
+        ${live?.on ? option("live", "live · nuværende", useLive) : ""}
+        ${numbers.map((round) =>
+          option(String(round), roundMenuLabel(round, names.get(round) ?? ""), round === picked),
+        )}
+      </ul>
+    </div>
   `;
 }
 
@@ -132,6 +215,8 @@ function hero(race: RaceWeekend, total: number, now: Date): SafeHtml {
           <span><b data-cd="hours">${pad2(parts.hours)}</b><small>timer</small></span>
           <span class="sep">:</span>
           <span><b data-cd="minutes">${pad2(parts.minutes)}</b><small>min</small></span>
+          <span class="sep">:</span>
+          <span><b data-cd="seconds">${pad2(parts.seconds)}</b><small>sek</small></span>
         </div>
         <p class="gp"><b>${race.name.toLowerCase()}</b></p>
         <p class="m">${race.circuitName.toLowerCase()}${length ? ` · ${length}` : ""}</p>
@@ -214,17 +299,18 @@ function driverStandings(board: BoardData, live: LiveOverlay | null): SafeHtml {
       <h2>kørerstilling<span>${tag}</span></h2>
       <div class="t drv ${projected ? "shifting" : ""}">
         <p class="hd">
-          <span>#</span><span></span><span>kører</span><span></span><span class="n">pts</span
-          ><span class="n">bag</span>
+          <span>#</span><span></span><span>kører</span><span class="bar"></span
+          ><span class="n">pts</span><span class="n">bag</span>
         </p>
         ${rows.map((row) => {
           const bar = pointsBar(row.points, leader);
           return html`<p style="--c:${teamColor(row.teamId)}">
-            <span class="m">${row.position} ${changeMark(row.change)}</span><span class="k"></span
-            ><span>${row.familyName.toLowerCase()}</span> ><span class="bar"
-              >${bar.filled}<i>${bar.rest}</i></span
-            ><span class="n"><b>${formatPoints(row.points)}</b></span
-            ><span class="n m">${gapText(row.points, leader)}</span>
+            <span class="m">${row.position} ${changeMark(row.change)}</span>
+            <span class="k"></span>
+            <span class="who">${row.familyName.toLowerCase()}</span>
+            <span class="bar">${bar.filled}<i>${bar.rest}</i></span>
+            <span class="n"><b>${formatPoints(row.points)}</b></span>
+            <span class="n m">${gapText(row.points, leader)}</span>
           </p>`;
         })}
       </div>
@@ -251,17 +337,18 @@ function constructorStandings(board: BoardData, live: LiveOverlay | null): SafeH
     <h2>konstruktørstilling<span>${tag}</span></h2>
     <div class="t con ${projected ? "shifting" : ""}">
       <p class="hd">
-        <span>#</span><span></span><span>hold</span><span></span><span class="n">pts</span
-        ><span class="n gap">bag</span>
+        <span>#</span><span></span><span>hold</span><span class="bar"></span
+        ><span class="n">pts</span><span class="n">bag</span>
       </p>
       ${rows.map((row) => {
         const bar = pointsBar(row.points, leader);
         return html`<p style="--c:${teamColor(row.teamId)}">
-          <span class="m">${row.position} ${changeMark(row.change)}</span><span class="k"></span
-          ><span>${teamLabel(row.name)}</span> ><span class="bar"
-            >${bar.filled}<i>${bar.rest}</i></span
-          ><span class="n"><b>${formatPoints(row.points)}</b></span
-          ><span class="n m gap">${gapText(row.points, leader)}</span>
+          <span class="m">${row.position} ${changeMark(row.change)}</span>
+          <span class="k"></span>
+          <span class="who">${teamLabel(row.name)}</span>
+          <span class="bar">${bar.filled}<i>${bar.rest}</i></span>
+          <span class="n"><b>${formatPoints(row.points)}</b></span>
+          <span class="n m">${gapText(row.points, leader)}</span>
         </p>`;
       })}
     </div>
@@ -283,11 +370,10 @@ function liveQuali(live: LiveOverlay): SafeHtml {
           (row, index) => html`
             <p style="--c:${teamColor(row.teamId)}">
               <span class="m">${index + 1}</span><span class="k"></span
-              ><span>${row.code.toLowerCase()}</span>
+              ><span class="who">${row.code.toLowerCase()}</span>
               <span class="n"
                 >${row.bestLap && row.bestLap === best ? html`<b class="hot">${row.bestLap}</b>` : (row.bestLap ?? "–")}</span
-              >
-              <span class="n m">${formatLiveGap(row.gap)}</span>
+              ><span class="n m">${formatLiveGap(row.gap)}</span>
             </p>
           `,
         )}
@@ -311,7 +397,7 @@ function liveRace(live: LiveOverlay): SafeHtml {
           (row, index) => html`
             <p style="--c:${teamColor(row.teamId)}">
               <span class="m">${index + 1}</span><span class="k"></span
-              ><span>${row.code.toLowerCase()}</span>
+              ><span class="who">${row.code.toLowerCase()}</span>
               <span class="n">${formatLiveGap(row.gap)}</span>
               <span class="n m">${formatLiveGap(row.interval)}</span>
             </p>
@@ -320,8 +406,9 @@ function liveRace(live: LiveOverlay): SafeHtml {
         ${retired.map(
           (row) => html`
             <p style="--c:${teamColor(row.teamId)}">
-              <span class="m">–</span><span class="k"></span><span>${row.code.toLowerCase()}</span>
-              <span class="n m">udgået</span><span></span>
+              <span class="m">–</span><span class="k"></span
+              ><span class="who">${row.code.toLowerCase()}</span> <span class="n m">udgået</span
+              ><span></span>
             </p>
           `,
         )}
@@ -374,7 +461,7 @@ function qualifying(rows: QualifyingRow[], result: { round: number; name: string
           const cut = row.position === 11 || row.position === 17 ? "cut" : "";
           return html`<p class="${cut}" style="--c:${teamColor(row.teamId)}">
             <span class="m">${row.position}</span><span class="k"></span
-            ><span>${row.familyName.toLowerCase()}</span
+            ><span class="who">${row.familyName.toLowerCase()}</span
             >${qualiCell(row.q1, best.q1, false)}${qualiCell(row.q2, best.q2, row.position <= 15 && row.q1 != null && row.q2 == null)}${qualiCell(row.q3, best.q3, row.position <= 10 && row.q3 == null)}
           </p>`;
         })}
@@ -411,7 +498,7 @@ function raceTable(result: { laps: number; rows: RaceResultRow[] }): SafeHtml {
           const time = raceTime(row, leaderLaps);
           return html`<p style="--c:${teamColor(row.teamId)}">
             <span class="m">${row.position ?? "–"}</span><span class="k"></span
-            ><span
+            ><span class="who"
               >${row.familyName.toLowerCase()}${row.fastestLap ? html` <span class="fl">●</span>` : ""}</span
             ><span class="n ${delta.kind === "up" ? "up" : delta.kind === "down" ? "dn" : "m"}"
               >${delta.text}</span

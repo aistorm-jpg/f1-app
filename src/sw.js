@@ -1,5 +1,5 @@
 /* Netværk først. Jolpica caches i localStorage, ikke her. */
-const CACHE = "apex-pitwall-v1";
+const CACHE = "apex-pitwall-v2";
 
 const PRECACHE = [
   "./",
@@ -24,6 +24,10 @@ self.addEventListener("install", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data === "skip-waiting") self.skipWaiting();
+});
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -40,6 +44,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith("/sw.js")) return;
 
   event.respondWith(
     fetch(request)

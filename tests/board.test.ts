@@ -40,10 +40,33 @@ describe("søjler og stilling", () => {
     expect(teamLabel("RB F1 Team")).toBe("racing bulls");
     expect(raceShort("United States Grand Prix")).toBe("united states gp");
     const parts = countdownParts("2026-10-29T14:03:00Z", new Date("2026-10-28T12:00:00Z"));
-    expect(parts).toMatchObject({ days: 1, hours: 2, minutes: 3, elapsed: false });
+    expect(parts).toEqual({ days: 1, hours: 2, minutes: 3, seconds: 0, elapsed: false });
     expect(pad2(3)).toBe("03");
-    expect(countdownParts("2026-10-01T00:00:00Z", new Date("2026-10-28T00:00:00Z")).elapsed).toBe(
-      true,
-    );
+    expect(countdownParts("2026-10-01T00:00:00Z", new Date("2026-10-28T00:00:00Z"))).toEqual({
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      elapsed: true,
+    });
+  });
+
+  test("sekunder tæller, så uret ikke ser frosset ud", () => {
+    const now = new Date("2026-11-01T20:00:00Z");
+    expect(countdownParts("2026-11-01T20:00:50Z", now)).toEqual({
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 50,
+      elapsed: false,
+    });
+    expect(countdownParts("2026-11-01T20:01:30Z", now)).toEqual({
+      days: 0,
+      hours: 0,
+      minutes: 1,
+      seconds: 30,
+      elapsed: false,
+    });
+    expect(countdownParts("ikke-en-dato", now).seconds).toBe(0);
   });
 });
