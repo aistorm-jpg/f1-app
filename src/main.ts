@@ -3,6 +3,14 @@ import { markup } from "./html.ts";
 import { fetchOpenF1Snapshot, findOpenF1Session } from "./live/openf1.ts";
 import { SAMPLE_QUALI, SAMPLE_RACE, type SampleDriver } from "./live/sample.ts";
 import { countdownParts, pad2 } from "./logic/board.ts";
+import {
+  copy,
+  LANG_STORAGE_KEY,
+  parseLang,
+  resolveLang,
+  sessionName,
+  type Lang,
+} from "./logic/i18n.ts";
 import { awardSessionPoints, projectStandings, type PointsKind } from "./logic/points.ts";
 import { parseRoundQuery, selectableRounds } from "./logic/round.ts";
 import { activeSession, qualifyingSegment } from "./logic/window.ts";
@@ -17,6 +25,38 @@ let refreshTimer = 0;
 let shown = false;
 let openF1Key: number | null = null;
 let openF1Locked = false;
+let focusLang: Lang | null = null;
+
+function storedLang(): string | null {
+  try {
+    return localStorage.getItem(LANG_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberLang(lang: Lang): void {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    // Privat tilstand. Valget ligger stadig i adressen.
+  }
+}
+
+function activeLang(): Lang {
+  const query = new URLSearchParams(location.search).get("lang");
+  const lang = resolveLang(query, storedLang());
+  if (parseLang(query)) rememberLang(lang);
+  return lang;
+}
+
+function paintChrome(lang: Lang): void {
+  const text = copy[lang];
+  document.documentElement.lang = lang;
+  const skip = document.querySelector(".skip");
+  if (skip) skip.textContent = text.skip;
+  document.querySelector('meta[name="description"]')?.setAttribute("content", text.metaDescription);
+}
 
 function tick(scope: ParentNode, targetIso: string): void {
   const parts = countdownParts(targetIso, new Date());
@@ -73,33 +113,34 @@ function projectFrom(
   };
 }
 
-function demoOverlay(board: BoardData): LiveOverlay {
+function demoOverlay(board: BoardData, lang: Lang): LiveOverlay {
+  const text = copy[lang];
   const projected = projectFrom(board, SAMPLE_RACE, "race");
   return {
     on: true,
     demo: true,
-    label: "løb",
+    label: text.race,
     segment: "Q3",
-    note: "demo · optaget udsnit fra usa 2026. point er lagt oven i stillingen, så tallene er ikke officielle. åbn siden uden ?demo=live for den rigtige tavle.",
+    note: text.demoNote,
     quali: SAMPLE_QUALI,
     race: SAMPLE_RACE,
     ...projected,
   };
 }
 
-async function liveOverlay(board: BoardData, now: Date): Promise<LiveOverlay | null> {
+async function liveOverlay(board: BoardData, now: Date, lang: Lang): Promise<LiveOverlay | null> {
   const sessions = board.weekends.flatMap((weekend) => weekend.sessions);
   const active = activeSession(sessions, now);
   if (!active) return null;
   const weekend = board.weekends.find((race) =>
     race.sessions.some((session) => session.start === active.start && session.kind === active.kind),
   );
+  const text = copy[lang];
   const scoring = active.kind === "race" || active.kind === "sprint";
   const openName =
     active.kind === "race" ? "Race" : active.kind === "sprint" ? "Sprint" : "Qualifying";
   let rows: SampleDriver[] | null = null;
-  let note =
-    "ingen live-sekundtider. openf1 kræver betaling mens sessionen kører. jolpica tjekkes ca. hvert 30. sek og kan halte.";
+  let note = text.liveNoteNone;
 
   if (!openF1Locked && (scoring || active.kind === "qualifying")) {
     if (openF1Key == null) openF1Key = await findOpenF1Session(active.start, openName);
@@ -107,12 +148,10 @@ async function liveOverlay(board: BoardData, now: Date): Promise<LiveOverlay | n
       const snap = await fetchOpenF1Snapshot(openF1Key);
       if (snap.ok && snap.rows.length > 0) {
         rows = snap.rows;
-        note =
-          "openf1 · ca. hvert 8. sek. det her er gratis data, typisk først når sessionen ikke længere regnes som live hos dem.";
+        note = text.liveNoteOpen;
       } else if (!snap.ok && snap.reason === "locked") {
         openF1Locked = true;
-        note =
-          "openf1 live koster penge, og der er ingen nøgle i siden. tavlen falder tilbage til jolpica, som opdateres ca. hvert 30. sek.";
+        note = text.liveNoteLocked;
       }
     }
   }
@@ -126,7 +165,7 @@ async function liveOverlay(board: BoardData, now: Date): Promise<LiveOverlay | n
   return {
     on: true,
     demo: false,
-    label: active.label,
+    label: sessionName(text, active.kind),
     segment: active.kind === "qualifying" ? qualifyingSegment(active.start, now) : "",
     note,
     quali: active.kind === "qualifying" ? (rows ?? []) : null,
@@ -153,19 +192,21 @@ async function show(fresh: boolean): Promise<void> {
   const scroll = window.scrollY;
   try {
     const now = new Date();
+    const lang = activeLang();
+    paintChrome(lang);
     const board = await loadBoard({ fresh });
     const rounds = selectableRounds(board.weekends, board.result?.round ?? 0);
     const params = new URLSearchParams(location.search);
     const queried = parseRoundQuery(params.get("runde"), rounds);
     if (params.get("runde") && queried == null) writeRoundUrl(null);
-    const live = demo ? demoOverlay(board) : await liveOverlay(board, now);
+    const live = demo ? demoOverlay(board, lang) : await liveOverlay(board, now, lang);
     const liveOn = Boolean(live?.on);
     let pane: ResultsPane | null = null;
     if (liveOn && queried == null) {
       pane = { round: null, liveDefault: true, status: "board", qualifying: [], result: null };
     } else if (queried != null && queried !== board.result?.round) {
       const status = root.querySelector("[data-round-status]");
-      if (status) status.textContent = "henter runden …";
+      if (status) status.textContent = copy[lang].loadingRound;
       try {
         const loaded = await loadRound(queried, { fresh });
         pane = {
@@ -188,19 +229,25 @@ async function show(fresh: boolean): Promise<void> {
     } else if (queried != null) {
       pane = { round: queried, liveDefault: false, status: "board", qualifying: [], result: null };
     }
-    root.innerHTML = markup(renderBoard(board, now, live, pane));
+    root.innerHTML = markup(renderBoard(board, now, live, pane, lang));
     root.setAttribute("aria-busy", "false");
     mountCountdown(root);
+    if (focusLang) {
+      root.querySelector<HTMLElement>(`[data-lang="${focusLang}"]`)?.focus();
+      focusLang = null;
+    }
     if (shown) window.scrollTo(0, scroll);
     shown = true;
     schedule(liveOn && queried == null);
   } catch (error) {
     console.error(error);
     if (shown) return;
-    root.innerHTML = markup(errorView());
+    const lang = activeLang();
+    paintChrome(lang);
+    root.innerHTML = markup(errorView(lang));
     root.setAttribute("aria-busy", "false");
     root.querySelector("[data-retry]")?.addEventListener("click", () => {
-      root.innerHTML = `<p class="state">henter sæsondata …</p>`;
+      root.innerHTML = `<p class="state">${copy[lang].loadingSeason}</p>`;
       void show(true);
     });
   }
@@ -305,6 +352,12 @@ function bindShell(): void {
       void show(true);
       return;
     }
+    const langButton = target.closest<HTMLElement>("[data-lang]");
+    if (langButton) {
+      const next = parseLang(langButton.dataset.lang ?? null);
+      if (next) applyLang(next);
+      return;
+    }
     const option = target.closest<HTMLElement>("[data-round-option]");
     if (option) {
       applyRound(option.dataset.roundOption ?? "");
@@ -318,6 +371,20 @@ function bindShell(): void {
   });
   root.addEventListener("keydown", (event) => {
     const list = root.querySelector<HTMLElement>("[data-round-list]");
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-lang]") &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")
+    ) {
+      event.preventDefault();
+      const buttons = [...root.querySelectorAll<HTMLElement>("[data-lang]")];
+      const index = buttons.indexOf(event.target.closest("[data-lang]") as HTMLElement);
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      const next = buttons[(index + delta + buttons.length) % buttons.length];
+      const lang = parseLang(next?.dataset.lang ?? null);
+      if (lang) applyLang(lang);
+      return;
+    }
     if (!list || list.hasAttribute("hidden")) {
       if (
         event.target instanceof Element &&
@@ -380,6 +447,23 @@ window.addEventListener("popstate", () => {
   void show(false);
 });
 
+function applyLang(lang: Lang): void {
+  if (lang === activeLang() && new URLSearchParams(location.search).get("lang") === lang) return;
+  rememberLang(lang);
+  const params = new URLSearchParams(location.search);
+  params.set("lang", lang);
+  const query = params.toString();
+  history.pushState(null, "", `${location.pathname}?${query}${location.hash}`);
+  focusLang = lang;
+  paintChrome(lang);
+  void show(false);
+}
+
 bindShell();
 registerServiceWorker();
+{
+  const lang = activeLang();
+  paintChrome(lang);
+  if (root && !shown) root.innerHTML = `<p class="state">${copy[lang].loadingSeason}</p>`;
+}
 void show(false);

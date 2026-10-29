@@ -37,4 +37,10 @@ describe("dansk tid", () => {
   test("hentet-tidspunkt", () => {
     expect(formatFetchedAt(new Date("2026-10-28T19:45:00Z"))).toBe("28 okt 20:45");
   });
+
+  test("engelske navne, samme danske klokkeslæt", () => {
+    expect(formatDanishClock("2026-11-01T20:00:00Z")).toBe("21:00");
+    expect(formatDanishDay("2026-11-01T20:00:00Z", "en")).toBe("sun  1 nov");
+    expect(formatFetchedAt(new Date("2026-10-28T19:45:00Z"), "en")).toBe("28 oct 20:45");
+  });
 });

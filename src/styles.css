@@ -76,6 +76,30 @@ b {
   color: var(--mut);
 }
 
+.langs {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45ch;
+  margin-left: 1.1ch;
+  white-space: nowrap;
+}
+
+.langs .slash {
+  color: var(--dim);
+}
+
+button.langbtn {
+  border: 0;
+  border-bottom: 0;
+  padding: 0;
+  background: none;
+  color: var(--mut);
+}
+
+button.langbtn[aria-pressed="true"] {
+  color: var(--fg);
+}
+
 .live .dot {
   display: inline-block;
   width: 0.55em;

@@ -2,6 +2,8 @@
 
 En enkelt, mørk side med sæsonen 2026. Nedtælling til næste grand prix, tider i dansk tid, kører- og konstruktørstilling, og seneste kvalifikation og løb.
 
+Sproget er dansk, til du vælger engelsk. Skiftet `da / en` ligger i statuslinjen. Valget gemmes i browseren, og `?lang=en` kan deles. Datoer og ugedage følger sproget. Klokken er stadig dansk tid, `Europe/Copenhagen`, og hedder "danish time" på engelsk.
+
 Teksten er systemets monospace. Den eneste høje farve er den røde nedtælling, `#E10600`. Der er ingen officielle logoer.
 
 ## Det skal du bruge

@@ -69,6 +69,23 @@ describe("pit wall html", () => {
     expect(page).toContain("r1 · bahrain gp");
     expect(page).not.toContain("r3 ·");
     expect(page).toContain(">bag<");
+    expect(page).toContain("tider · dansk tid");
+    expect(page).toMatch(/data-lang="da"[^>]*aria-pressed="true"/);
+  });
+
+  test("engelsk bruger de samme felter og dansk tid", () => {
+    const page = markup(renderBoard(board(), now, null, null, "en"));
+    expect(page).toContain("<small>days</small>");
+    expect(page).toContain("<small>sec</small>");
+    expect(page).toContain("times · danish time");
+    expect(page).toContain("sun  1 nov");
+    expect(page).toContain(">21:00<");
+    expect(page).toContain("driver standings");
+    expect(page).toContain(">gap<");
+    expect(page).toContain(">race<");
+    expect(page).toContain("qualifying");
+    expect(page).toMatch(/data-lang="en"[^>]*aria-pressed="true"/);
+    expect(page).not.toContain("tider · dansk tid");
   });
 
   test("en valgt runde står i menuen", () => {
