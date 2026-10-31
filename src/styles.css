@@ -326,6 +326,18 @@ h2 span {
   background: #141416;
 }
 
+.t p.ko,
+.t p.ko .n,
+.t p.ko .who {
+  color: var(--dim);
+}
+
+.empty-live {
+  color: var(--fg);
+  max-width: 62ch;
+  margin: 1.4rem 0 2rem;
+}
+
 .n {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -375,6 +387,10 @@ h2 span {
 
 .lb p {
   grid-template-columns: 2.5ch 1ch minmax(0, 8ch) minmax(0, 1fr) minmax(0, 10ch);
+}
+
+.lb.laps p {
+  grid-template-columns: 2.5ch 1ch minmax(0, 8ch) 3.4ch minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .con p {
@@ -602,6 +618,11 @@ footer {
   .lb p {
     grid-template-columns: 2.2ch 1.05ch minmax(3ch, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 0.45ch;
+  }
+
+  .lb.laps p {
+    grid-template-columns: 2.1ch 1ch minmax(0, 1fr) 3.2ch minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 0.35ch;
   }
 
   .live .x {

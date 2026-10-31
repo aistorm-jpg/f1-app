@@ -20,7 +20,7 @@ import {
   teamLabel,
 } from "./logic/board.ts";
 import type { ProjectedStanding } from "./logic/points.ts";
-import { formatLiveGap, type SampleDriver } from "./live/sample.ts";
+import { formatLiveGap, hasLiveTimes, type SampleDriver } from "./live/sample.ts";
 import { teamColor } from "./logic/teams.ts";
 import { copy, lapUnit, sessionName, type Copy, type Lang } from "./logic/i18n.ts";
 import { roundMenuLabel, selectableRounds } from "./logic/round.ts";
@@ -42,6 +42,8 @@ function kmText(meters: number, lang: Lang): string {
 export interface LiveOverlay {
   on: boolean;
   demo: boolean;
+  /** "live" er den direkte strøm. "delayed" er OpenF1 eller Jolpica. */
+  feed?: "live" | "delayed";
   label: string;
   segment: string;
   note: string;
@@ -74,15 +76,21 @@ export function renderBoard(
   );
   const fetched = formatFetchedAt(new Date(board.fetchedAt), lang);
   const pulsing = Boolean(live?.on);
+  const streaming = pulsing && live?.feed !== "delayed";
   const useLive = Boolean(live?.on) && (pane == null || pane.liveDefault);
   const qualiRows = pane?.status === "ready" ? pane.qualifying : board.qualifying;
   const raceResult = pane?.status === "ready" ? pane.result : board.result;
   const standingsLive = useLive ? live : null;
+  const qualiLive = Boolean(useLive && live?.quali);
+  const raceLive = Boolean(useLive && live?.race);
+  const qualiMissing = qualiLive && !hasLiveTimes(live?.quali);
+  const raceMissing = raceLive && !hasLiveTimes(live?.race);
   return html`
     <header class="top">
       <h1>apex<i>.</i> <span class="m">pit wall</span></h1>
       <p class="live">
-        <span class="dot ${pulsing ? "" : "off"}"></span>${text.live}
+        <span class="dot ${streaming ? "" : "off"}"></span
+        >${pulsing && live?.feed === "delayed" ? text.delayed : text.live}
         ${
           pulsing
             ? html`<span class="x">· ${live?.demo ? "demo · " : ""}${live?.label ?? ""}</span>`
@@ -104,28 +112,34 @@ export function renderBoard(
         ? html`<p class="state">
             ${text.roundError} <button type="button" data-round-retry>${text.retry}</button>
           </p>`
-        : html`<div class="grid" data-results>
-            ${
-              useLive && live?.quali
-                ? liveQuali(live, text)
-                : raceResult
-                  ? qualifying(qualiRows, raceResult, text)
-                  : html`<section>
-                      <h2>${text.qualifying}<span>${text.noData}</span></h2>
-                      <p class="note">${text.noQualiYet}</p>
-                    </section>`
-            }
-            ${
-              useLive && live?.race
-                ? liveRace(live, text)
-                : raceResult
-                  ? raceTable(raceResult, text)
-                  : html`<section>
-                      <h2>${text.race}<span>–</span></h2>
-                      <p class="note">${text.raceNotRun}</p>
-                    </section>`
-            }
-          </div>`
+        : qualiMissing && raceMissing
+          ? unavailable(text)
+          : html`<div class="grid" data-results>
+              ${
+                qualiLive
+                  ? qualiMissing
+                    ? unavailable(text)
+                    : liveQuali(live as LiveOverlay, text)
+                  : raceResult
+                    ? qualifying(qualiRows, raceResult, text)
+                    : html`<section>
+                        <h2>${text.qualifying}<span>${text.noData}</span></h2>
+                        <p class="note">${text.noQualiYet}</p>
+                      </section>`
+              }
+              ${
+                raceLive
+                  ? raceMissing
+                    ? unavailable(text)
+                    : liveRace(live as LiveOverlay, text)
+                  : raceResult
+                    ? raceTable(raceResult, text)
+                    : html`<section>
+                        <h2>${text.race}<span>–</span></h2>
+                        <p class="note">${text.raceNotRun}</p>
+                      </section>`
+              }
+            </div>`
     }
     ${useLive && live?.note ? html`<p class="note">${live.note}</p>` : ""}
     <div class="grid">
@@ -378,12 +392,28 @@ function constructorStandings(board: BoardData, live: LiveOverlay | null, text: 
   `;
 }
 
+function driverFlags(row: SampleDriver, text: Copy): SafeHtml {
+  if (row.inPit) return html` <span class="m">${text.pitIn}</span>`;
+  if (row.pitOut) return html` <span class="m">${text.pitOut}</span>`;
+  if (row.knockedOut) return html` <span class="m">${text.knockedOut}</span>`;
+  return html``;
+}
+
+function rowColour(row: SampleDriver): string {
+  return row.colour ?? teamColor(row.teamId);
+}
+
+function unavailable(text: Copy): SafeHtml {
+  return html`<section><p class="note empty-live">${text.liveUnavailable}</p></section>`;
+}
+
 function liveQuali(live: LiveOverlay, text: Copy): SafeHtml {
   const rows = live.quali ?? [];
   const best = rows.map((row) => row.bestLap).find(Boolean) ?? null;
+  const word = live.feed === "delayed" ? text.delayed : text.live;
   return html`
     <section>
-      <h2>${text.qualifying}<span>${live.segment} · ${text.live}</span></h2>
+      <h2>${text.qualifying}<span>${live.segment ? `${live.segment} · ` : ""}${word}</span></h2>
       <div class="t lb">
         <p class="hd">
           <span>#</span><span></span><span>${text.driver}</span><span class="n">${text.best}</span
@@ -391,12 +421,12 @@ function liveQuali(live: LiveOverlay, text: Copy): SafeHtml {
         </p>
         ${rows.map(
           (row, index) => html`
-            <p style="--c:${teamColor(row.teamId)}">
+            <p class="${row.knockedOut ? "ko" : ""}" style="--c:${rowColour(row)}">
               <span class="m">${index + 1}</span><span class="k"></span
-              ><span class="who">${row.code.toLowerCase()}</span>
-              <span class="n"
+              ><span class="who">${row.code.toLowerCase()}${driverFlags(row, text)}</span
+              ><span class="n"
                 >${row.bestLap && row.bestLap === best ? html`<b class="hot">${row.bestLap}</b>` : (row.bestLap ?? "–")}</span
-              ><span class="n m">${formatLiveGap(row.gap)}</span>
+              ><span class="n m">${formatLiveGap(row.gap, (count) => lapUnit(text, count))}</span>
             </p>
           `,
         )}
@@ -408,30 +438,40 @@ function liveQuali(live: LiveOverlay, text: Copy): SafeHtml {
 function liveRace(live: LiveOverlay, text: Copy): SafeHtml {
   const rows = (live.race ?? []).filter((row) => !row.retired);
   const retired = (live.race ?? []).filter((row) => row.retired);
+  const withLaps = (live.race ?? []).some((row) => row.laps != null);
+  const word = live.feed === "delayed" ? text.delayed : text.live;
+  const gapText = (value: SampleDriver["gap"]) =>
+    formatLiveGap(value, (count) => lapUnit(text, count));
   return html`
     <section>
-      <h2>${text.race}<span>${text.live}</span></h2>
-      <div class="t lb">
+      <h2>${text.race}<span>${word}</span></h2>
+      <div class="t lb ${withLaps ? "laps" : ""}">
         <p class="hd">
-          <span>#</span><span></span><span>${text.driver}</span><span class="n">${text.gap}</span
+          <span>#</span><span></span
+          ><span>${text.driver}</span
+          >${withLaps ? html`<span class="n">${text.lapCol}</span>` : ""}<span class="n"
+            >${text.gap}</span
           ><span class="n">${text.interval}</span>
         </p>
         ${rows.map(
           (row, index) => html`
-            <p style="--c:${teamColor(row.teamId)}">
+            <p style="--c:${rowColour(row)}">
               <span class="m">${index + 1}</span><span class="k"></span
-              ><span class="who">${row.code.toLowerCase()}</span>
-              <span class="n">${formatLiveGap(row.gap)}</span>
-              <span class="n m">${formatLiveGap(row.interval)}</span>
+              ><span class="who">${row.code.toLowerCase()}${driverFlags(row, text)}</span
+              >${withLaps ? html`<span class="n m">${row.laps ?? ""}</span>` : ""}<span class="n"
+                >${gapText(row.gap)}</span
+              ><span class="n m">${gapText(row.interval)}</span>
             </p>
           `,
         )}
         ${retired.map(
           (row) => html`
-            <p style="--c:${teamColor(row.teamId)}">
+            <p class="ko" style="--c:${rowColour(row)}">
               <span class="m">–</span><span class="k"></span
-              ><span class="who">${row.code.toLowerCase()}</span>
-              <span class="n m">${text.dnf}</span><span></span>
+              ><span class="who">${row.code.toLowerCase()}</span
+              >${withLaps ? html`<span class="n m">${row.laps ?? ""}</span>` : ""}<span class="n m"
+                >${text.dnf}</span
+              ><span></span>
             </p>
           `,
         )}

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BoardData } from "../src/data/jolpica.ts";
 import { markup } from "../src/html.ts";
+import { copy } from "../src/logic/i18n.ts";
 import { renderBoard, type LiveOverlay, type ResultsPane } from "../src/render.ts";
 
 const now = new Date("2026-10-28T12:00:00Z");
@@ -133,5 +134,27 @@ describe("pit wall html", () => {
     expect(page).toContain("live · nuværende");
     expect(page).toContain("live-note");
     expect(page).toMatch(/id="round-opt-live"[^>]*aria-selected="true"/);
+  });
+
+  test("en tom live-tavle siger at tiderne ikke er klar", () => {
+    const live: LiveOverlay = {
+      on: true,
+      demo: false,
+      feed: "delayed",
+      label: "kvalifikation",
+      segment: "Q2",
+      note: "",
+      quali: [],
+      race: [],
+      drivers: null,
+      constructors: null,
+    };
+    const danish = markup(renderBoard(board(), now, live));
+    const english = markup(renderBoard(board(), now, live, null, "en"));
+    expect(danish).toContain(copy.da.liveUnavailable);
+    expect(danish).toContain("forsinket");
+    expect(english).toContain(copy.en.liveUnavailable);
+    expect(english).toContain("delayed");
+    expect(danish).not.toContain('<div class="t lb">');
   });
 });

@@ -1,7 +1,14 @@
 import { loadBoard, loadRound, type BoardData } from "./data/jolpica.ts";
 import { markup } from "./html.ts";
+import {
+  demoTiming,
+  mapTiming,
+  openLiveTiming,
+  type TimingBoard,
+  type TimingState,
+} from "./live/livetiming.ts";
 import { fetchOpenF1Snapshot, findOpenF1Session } from "./live/openf1.ts";
-import { SAMPLE_QUALI, SAMPLE_RACE, type SampleDriver } from "./live/sample.ts";
+import { SAMPLE_RACE, type SampleDriver } from "./live/sample.ts";
 import { countdownParts, pad2 } from "./logic/board.ts";
 import {
   copy,
@@ -17,7 +24,8 @@ import { activeSession, qualifyingSegment } from "./logic/window.ts";
 import { errorView, renderBoard, type LiveOverlay, type ResultsPane } from "./render.ts";
 
 const root = document.querySelector<HTMLElement>("#app");
-const demo = new URLSearchParams(location.search).get("demo") === "live";
+const demoKind = new URLSearchParams(location.search).get("demo");
+const demo = demoKind === "live";
 
 let countdownTimer = 0;
 let countdownDelay = 0;
@@ -26,6 +34,13 @@ let shown = false;
 let openF1Key: number | null = null;
 let openF1Locked = false;
 let focusLang: Lang | null = null;
+let cachedBoard: BoardData | null = null;
+let timingState: TimingState | null = null;
+let feedStatus: "live" | "down" = "down";
+let stopFeed: (() => void) | null = null;
+let demoStep = 0;
+let demoTimer = 0;
+let paintPending = false;
 
 function storedLang(): string | null {
   try {
@@ -113,18 +128,64 @@ function projectFrom(
   };
 }
 
+function rowsWithLaps(rows: SampleDriver[]): SampleDriver[] {
+  return rows.map((row, index) => ({
+    ...row,
+    laps: row.laps ?? (row.retired ? 44 : 56 - Math.min(index, 2)),
+    inPit: row.inPit ?? index === 4,
+  }));
+}
+
+function overlayFromBoard(
+  board: BoardData,
+  mapped: TimingBoard,
+  lang: Lang,
+  demoMode: boolean,
+): LiveOverlay {
+  const text = copy[lang];
+  const scoring = mapped.mode === "race";
+  const projected = scoring ? projectFrom(board, mapped.rows, mapped.points) : null;
+  return {
+    on: true,
+    demo: demoMode,
+    feed: "live",
+    label: scoring ? text.race : text.qualifying,
+    segment: mapped.segment,
+    note: demoMode ? text.demoNote : text.liveNoteDirect,
+    quali: scoring ? null : mapped.rows,
+    race: scoring ? mapped.rows : null,
+    drivers: projected?.drivers ?? null,
+    constructors: projected?.constructors ?? null,
+  };
+}
+
 function demoOverlay(board: BoardData, lang: Lang): LiveOverlay {
   const text = copy[lang];
+  const mapped = mapTiming(timingState ?? demoTiming(0));
+  const quali = overlayFromBoard(board, mapped, lang, true);
   const projected = projectFrom(board, SAMPLE_RACE, "race");
+  return {
+    ...quali,
+    label: text.qualifying,
+    race: rowsWithLaps(SAMPLE_RACE),
+    note: text.demoNote,
+    ...projected,
+  };
+}
+
+function emptyOverlay(lang: Lang): LiveOverlay {
+  const text = copy[lang];
   return {
     on: true,
     demo: true,
-    label: text.race,
-    segment: "Q3",
-    note: text.demoNote,
-    quali: SAMPLE_QUALI,
-    race: SAMPLE_RACE,
-    ...projected,
+    feed: "delayed",
+    label: text.qualifying,
+    segment: "Q2",
+    note: "",
+    quali: [],
+    race: [],
+    drivers: null,
+    constructors: null,
   };
 }
 
@@ -136,13 +197,21 @@ async function liveOverlay(board: BoardData, now: Date, lang: Lang): Promise<Liv
     race.sessions.some((session) => session.start === active.start && session.kind === active.kind),
   );
   const text = copy[lang];
+  if (feedStatus === "live" && timingState) {
+    const mapped = mapTiming(timingState);
+    if (mapped.hasTimes) return overlayFromBoard(board, mapped, lang, false);
+  }
   const scoring = active.kind === "race" || active.kind === "sprint";
+  const timesPanel =
+    active.kind === "qualifying" ||
+    active.kind === "sprintQualifying" ||
+    active.kind.startsWith("practice");
   const openName =
     active.kind === "race" ? "Race" : active.kind === "sprint" ? "Sprint" : "Qualifying";
   let rows: SampleDriver[] | null = null;
   let note = text.liveNoteNone;
 
-  if (!openF1Locked && (scoring || active.kind === "qualifying")) {
+  if (!openF1Locked && (scoring || timesPanel)) {
     if (openF1Key == null) openF1Key = await findOpenF1Session(active.start, openName);
     if (openF1Key != null) {
       const snap = await fetchOpenF1Snapshot(openF1Key);
@@ -165,10 +234,11 @@ async function liveOverlay(board: BoardData, now: Date, lang: Lang): Promise<Liv
   return {
     on: true,
     demo: false,
+    feed: "delayed",
     label: sessionName(text, active.kind),
-    segment: active.kind === "qualifying" ? qualifyingSegment(active.start, now) : "",
+    segment: timesPanel && active.kind === "qualifying" ? qualifyingSegment(active.start, now) : "",
     note,
-    quali: active.kind === "qualifying" ? (rows ?? []) : null,
+    quali: timesPanel ? (rows ?? []) : null,
     race: scoring ? (rows ?? []) : null,
     drivers: projected?.drivers ?? null,
     constructors: projected?.constructors ?? null,
@@ -199,7 +269,13 @@ async function show(fresh: boolean): Promise<void> {
     const params = new URLSearchParams(location.search);
     const queried = parseRoundQuery(params.get("runde"), rounds);
     if (params.get("runde") && queried == null) writeRoundUrl(null);
-    const live = demo ? demoOverlay(board, lang) : await liveOverlay(board, now, lang);
+    cachedBoard = board;
+    const live =
+      demoKind === "empty"
+        ? emptyOverlay(lang)
+        : demo
+          ? demoOverlay(board, lang)
+          : await liveOverlay(board, now, lang);
     const liveOn = Boolean(live?.on);
     let pane: ResultsPane | null = null;
     if (liveOn && queried == null) {
@@ -238,7 +314,10 @@ async function show(fresh: boolean): Promise<void> {
     }
     if (shown) window.scrollTo(0, scroll);
     shown = true;
-    schedule(liveOn && queried == null);
+    const streaming = live?.feed === "live" && !live.demo;
+    ensureDemo();
+    ensureFeed(liveOn && queried == null);
+    schedule(liveOn && queried == null, streaming);
   } catch (error) {
     console.error(error);
     if (shown) return;
@@ -253,13 +332,50 @@ async function show(fresh: boolean): Promise<void> {
   }
 }
 
-function schedule(live: boolean): void {
+function schedule(live: boolean, streaming: boolean): void {
   window.clearInterval(refreshTimer);
-  if (!live && !demo) return;
-  const wait = demo ? 8_000 : openF1Locked ? 30_000 : 8_000;
+  if (demoKind === "live" || demoKind === "empty") return;
+  if (!live) return;
+  const wait = streaming ? 60_000 : openF1Locked ? 30_000 : 8_000;
   refreshTimer = window.setInterval(() => {
     void show(true);
   }, wait);
+}
+
+function ensureFeed(active: boolean): void {
+  if (demoKind === "live" || demoKind === "empty" || !active) {
+    stopFeed?.();
+    stopFeed = null;
+    if (demoKind == null) feedStatus = "down";
+    return;
+  }
+  if (stopFeed) return;
+  stopFeed = openLiveTiming({
+    onState(state) {
+      timingState = state;
+      feedStatus = "live";
+      if (!cachedBoard || paintPending) return;
+      paintPending = true;
+      window.setTimeout(() => {
+        paintPending = false;
+        void show(false);
+      }, 300);
+    },
+    onStatus(status) {
+      feedStatus = status === "live" ? "live" : "down";
+      if (status === "down" && cachedBoard) void show(false);
+    },
+  }).close;
+}
+
+function ensureDemo(): void {
+  if (demoKind !== "live" || demoTimer) return;
+  timingState = demoTiming(0);
+  demoTimer = window.setInterval(() => {
+    demoStep += 1;
+    timingState = demoTiming(demoStep);
+    void show(false);
+  }, 1600);
 }
 
 function registerServiceWorker(): void {

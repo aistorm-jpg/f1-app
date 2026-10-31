@@ -10,6 +10,12 @@ export interface SampleDriver {
   interval: number | string;
   retired?: boolean;
   bestLap?: string;
+  knockedOut?: boolean;
+  inPit?: boolean;
+  pitOut?: boolean;
+  laps?: number;
+  /** Farve fra timingen, "#rrggbb", hvis den findes. */
+  colour?: string;
 }
 
 export const SAMPLE_RACE: SampleDriver[] = [
@@ -251,13 +257,30 @@ export const SAMPLE_QUALI: SampleDriver[] = [
   },
 ];
 
-export function formatLiveGap(value: number | string | null | undefined): string {
+export function formatLiveGap(
+  value: number | string | null | undefined,
+  lapWord: (count: number) => string = () => "omg.",
+): string {
   if (value == null || value === "") return "–";
   if (typeof value === "string") {
     const laps = /(\d+)/.exec(value);
-    if (/lap/i.test(value)) return `+${laps?.[1] ?? "1"} omg.`;
+    if (/lap/i.test(value)) return `+${laps?.[1] ?? "1"} ${lapWord(Number(laps?.[1] ?? 1))}`;
     return value;
   }
   if (value === 0) return "·";
   return `+${value.toFixed(3)}`;
+}
+
+/** Tom tavle: ingen tid, intet hul og ingen omgang. Så vises en forklaring i stedet. */
+export function hasLiveTimes(rows: readonly SampleDriver[] | null | undefined): boolean {
+  if (!rows || rows.length === 0) return false;
+  return rows.some((row) => {
+    if (row.bestLap) return true;
+    if (typeof row.gap === "number") return true;
+    if (typeof row.gap === "string" && row.gap.trim() !== "") return true;
+    if (typeof row.interval === "number") return true;
+    if (typeof row.interval === "string" && row.interval.trim() !== "") return true;
+    if (row.retired) return true;
+    return false;
+  });
 }
