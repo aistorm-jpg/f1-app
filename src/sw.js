@@ -1,5 +1,5 @@
 /* Netværk først. Jolpica caches i localStorage, ikke her. */
-const CACHE = "apex-pitwall-v2";
+const CACHE = "apex-pitwall-v3";
 
 const PRECACHE = [
   "./",
@@ -43,6 +43,8 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
+  // Timing-strømmen er en WebSocket. Den må ikke ende i cachen.
+  if (url.hostname === "livetiming.formula1.com") return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.endsWith("/sw.js")) return;
 

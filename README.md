@@ -58,7 +58,9 @@ Over kvalifikation og løb kan du vælge en tidligere runde, for eksempel `r18 �
 
 Den røde prik pulserer kun, mens en session er i gang (fra ti minutter før start og et stykke tid efter, alt efter om det er træning, kval eller løb).
 
-OpenF1 kan levere tider cirka hvert 8. sekund, men kun gratis når sessionen ikke længere regnes som live hos dem. Selve live-strømmen koster penge, og siden har ingen nøgle. Derfor tjekkes Jolpica cirka hvert 30. sekund i det vindue. De tal kan halte. Når sessionen er slut, vises Jolpicas officielle resultat igen.
+Mens en session kører, prøver siden først F1's egen timing-strøm i browseren (WebSocket, uden nøgle). Den opdateres mens bilerne kører. Prikken pulserer, og der står **live**. Kommer der ingen tider, står der **forsinket**, og siden falder tilbage til OpenF1, hvis det er gratis, ellers Jolpica cirka hvert 30. sekund. En tom tavle siger det ligeud, i stedet for at vise et Q2 uden tider.
+
+OpenF1 kan levere tider cirka hvert 8. sekund, men kun gratis når sessionen ikke længere regnes som live hos dem. Selve deres live-strøm koster penge, og siden har ingen nøgle. Når sessionen er slut, vises Jolpicas officielle resultat igen.
 
 `?demo=live` viser en optaget tavle fra USA 2026, så man kan se live-layoutet uden at der køres. Pointene i demoen er lagt oven i stillingen og er ikke officielle.
 

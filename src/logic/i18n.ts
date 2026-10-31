@@ -69,6 +69,13 @@ export interface Copy {
   liveNoteNone: string;
   liveNoteOpen: string;
   liveNoteLocked: string;
+  liveNoteDirect: string;
+  delayed: string;
+  liveUnavailable: string;
+  lapCol: string;
+  pitIn: string;
+  pitOut: string;
+  knockedOut: string;
 }
 
 const da: Copy = {
@@ -134,13 +141,21 @@ const da: Copy = {
   sprintQuali: "sprint-kval.",
   sprint: "sprint",
   demoNote:
-    "demo · optaget udsnit fra usa 2026. point er lagt oven i stillingen, så tallene er ikke officielle. åbn siden uden ?demo=live for den rigtige tavle.",
+    "demo · optaget mexico-kval 2026 og et usa-løb. tallene er ikke officielle. åbn siden uden ?demo=live for den rigtige tavle.",
   liveNoteNone:
     "ingen live-sekundtider. openf1 kræver betaling mens sessionen kører. jolpica tjekkes ca. hvert 30. sek og kan halte.",
   liveNoteOpen:
     "openf1 · ca. hvert 8. sek. det her er gratis data, typisk først når sessionen ikke længere regnes som live hos dem.",
   liveNoteLocked:
     "openf1 live koster penge, og der er ingen nøgle i siden. tavlen falder tilbage til jolpica, som opdateres ca. hvert 30. sek.",
+  liveNoteDirect: "direkte timing · opdateres mens bilerne kører.",
+  delayed: "forsinket",
+  liveUnavailable:
+    "Live-tider er ikke tilgængelige lige nu – resultaterne kommer kort efter sessionen",
+  lapCol: "omg",
+  pitIn: "pit",
+  pitOut: "ud",
+  knockedOut: "ude",
 };
 
 const en: Copy = {
@@ -206,13 +221,21 @@ const en: Copy = {
   sprintQuali: "sprint quali",
   sprint: "sprint",
   demoNote:
-    "demo · recorded sample from the 2026 united states gp. points are added on top of the standings, so the numbers are not official. open the page without ?demo=live for the real board.",
+    "demo · recorded mexico qualifying 2026 and a united states race. the numbers are not official. open the page without ?demo=live for the real board.",
   liveNoteNone:
     "no live lap times. openf1 charges while the session is running. jolpica is checked about every 30 seconds and can lag.",
   liveNoteOpen:
     "openf1 · about every 8 seconds. this is the free data, usually only after they no longer treat the session as live.",
   liveNoteLocked:
     "openf1 live costs money, and this page has no key. the board falls back to jolpica, which updates about every 30 seconds.",
+  liveNoteDirect: "live timing · updates while the cars are running.",
+  delayed: "delayed",
+  liveUnavailable:
+    "Live times are not available right now – results arrive shortly after the session",
+  lapCol: "lap",
+  pitIn: "pit",
+  pitOut: "out",
+  knockedOut: "out",
 };
 
 export const copy: Record<Lang, Copy> = { da, en };
