@@ -44,12 +44,17 @@ export async function loadCachedEntry<T>(options: {
   store: KeyValueStore | null;
   key: string;
   ttlMs: number;
+  /** Tomme svar, fx en kval uden tider endnu, må ikke blive hængende i den lange ttl. */
+  emptyTtlMs?: number;
+  isEmpty?: (data: T) => boolean;
   now?: number;
   load: () => Promise<T>;
 }): Promise<{ data: T; savedAt: number }> {
   const now = options.now ?? Date.now();
   const entry = options.store ? readEntry<T>(options.store, options.key) : null;
-  if (entry && cacheState(entry.savedAt, now, options.ttlMs) === "fresh") {
+  const ttl =
+    entry && options.isEmpty?.(entry.data) ? (options.emptyTtlMs ?? options.ttlMs) : options.ttlMs;
+  if (entry && cacheState(entry.savedAt, now, ttl) === "fresh") {
     return { data: entry.data, savedAt: entry.savedAt };
   }
   try {

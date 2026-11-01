@@ -44,6 +44,11 @@ function board(): BoardData {
       round: 2,
       rows: [{ position: 1, name: "Mercedes", points: 40, teamId: "mercedes" }],
     },
+    focusRound: 2,
+    qualiRound: 2,
+    qualiName: "Miami Grand Prix",
+    racePending: null,
+    lastResult: { round: 2, name: "Miami Grand Prix", laps: 57, rows: [], podium: [] },
     qualifying: [
       {
         position: 1,
