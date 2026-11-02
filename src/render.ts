@@ -22,6 +22,7 @@ import {
 import type { ProjectedStanding } from "./logic/points.ts";
 import { formatLiveGap, hasLiveTimes, type SampleDriver } from "./live/sample.ts";
 import { teamColor } from "./logic/teams.ts";
+import { headToHead, pointBars, summarize, type DriverCard } from "./logic/driver.ts";
 import { copy, fill, lapUnit, sessionName, type Copy, type Lang } from "./logic/i18n.ts";
 import { roundMenuLabel, selectableRounds } from "./logic/round.ts";
 import { drawTrack } from "./logic/track.ts";
@@ -62,12 +63,19 @@ export interface ResultsPane {
   racePending?: RacePending | null;
 }
 
+export interface DriverView {
+  driver: DriverCard | null;
+  teammate: DriverCard | null;
+  error: boolean;
+}
+
 export function renderBoard(
   board: BoardData,
   now: Date,
   live: LiveOverlay | null = null,
   pane: ResultsPane | null = null,
   lang: Lang = "da",
+  driver: DriverView | null = null,
 ): SafeHtml {
   const text = copy[lang];
   const next =
@@ -114,6 +122,7 @@ export function renderBoard(
         ${langToggle(lang, text)}
       </p>
     </header>
+    ${driver ? driverPanel(driver, text) : ""}
     ${next ? hero(next, board.weekends.length, now, text, lang) : seasonOver(board, text)}
     ${roundPicker(board, live, pane, useLive, text)}
     ${
@@ -325,6 +334,119 @@ function seasonOver(board: BoardData, text: Copy): SafeHtml {
   `;
 }
 
+function placeLabel(position: number | null, text: Copy): string {
+  return position == null ? text.dnf : String(position);
+}
+
+function roundStrip(
+  rows: readonly { round: number; position: number | null }[],
+  text: Copy,
+): SafeHtml {
+  return html`
+    <div class="rounds">
+      ${rows.map(
+        (row) => html`
+          <p><span class="m">r${row.round}</span><b>${placeLabel(row.position, text)}</b></p>
+        `,
+      )}
+    </div>
+  `;
+}
+
+function pointsChart(card: DriverCard, text: Copy): SafeHtml {
+  const width = 300;
+  const height = 56;
+  const bars = pointBars(
+    card.races.map((race) => race.points),
+    width,
+    height,
+  );
+  const described = card.races.map((race) => `r${race.round} ${race.points}`).join(", ");
+  return html`
+    <svg
+      class="chart"
+      viewBox="0 0 ${width} ${height}"
+      role="img"
+      aria-label="${text.pointsPerRound}: ${described}"
+    >
+      ${bars.map(
+        (bar, index) => html`
+          <rect
+            x="${bar.x}"
+            y="${bar.y}"
+            width="${bar.w}"
+            height="${Math.max(bar.h, bar.h > 0 ? bar.h : 0)}"
+            fill="${teamColor(card.teamId)}"
+          >
+            <title>r${card.races[index]?.round} ${card.races[index]?.points}</title>
+          </rect>
+        `,
+      )}
+    </svg>
+  `;
+}
+
+function driverPanel(view: DriverView, text: Copy): SafeHtml {
+  if (view.error || !view.driver) {
+    return html`
+      <section class="dossier" id="korer">
+        <p class="note">${text.driverMissing}</p>
+      </section>
+    `;
+  }
+  const card = view.driver;
+  const summary = summarize(card.races);
+  const mate = view.teammate;
+  const versus = mate ? headToHead(card, mate) : null;
+  return html`
+    <section class="dossier" id="korer">
+      <h2>
+        ${card.familyName.toLowerCase()}
+        <button type="button" data-driver-close>${text.driverClose}</button>
+      </h2>
+      <div class="sums">
+        <p><b>${summary.wins}</b><span class="m">${text.wins}</span></p>
+        <p><b>${summary.podiums}</b><span class="m">${text.podiums}</span></p>
+        <p><b>${summary.dnfs}</b><span class="m">${text.dnfs}</span></p>
+        <p><b>${summary.points}</b><span class="m">${text.pointsWord}</span></p>
+      </div>
+      <h2>${text.pointsPerRound}</h2>
+      ${pointsChart(card, text)}
+      <h2>${text.racePlaces}</h2>
+      ${roundStrip(card.races, text)}
+      <h2>${text.qualifying}</h2>
+      ${roundStrip(card.qualifying, text)}
+      <h2 id="h2h">
+        ${text.versus}${mate ? html`<span>${mate.familyName.toLowerCase()}</span>` : ""}
+      </h2>
+      ${
+        versus && mate
+          ? html`
+              <div class="h2h">
+                <p class="hd">
+                  <span></span><span>${card.familyName.toLowerCase()}</span
+                  ><span>${mate.familyName.toLowerCase()}</span>
+                </p>
+                <p>
+                  <span>${text.qualifying}</span><b>${versus.quali.driver}</b
+                  ><b>${versus.quali.teammate}</b>
+                </p>
+                <p>
+                  <span>${text.race}</span><b>${versus.race.driver}</b
+                  ><b>${versus.race.teammate}</b>
+                </p>
+                <p>
+                  <span>${text.pointsWord}</span><b>${versus.points.driver}</b
+                  ><b>${versus.points.teammate}</b>
+                </p>
+              </div>
+            `
+          : html`<p class="note">${text.noTeammate}</p>`
+      }
+    </section>
+  `;
+}
+
 function changeMark(change: number): SafeHtml {
   if (change > 0) return html`<span class="up">▲${change}</span>`;
   if (change < 0) return html`<span class="dn">▼${-change}</span>`;
@@ -357,7 +479,14 @@ function driverStandings(board: BoardData, live: LiveOverlay | null, text: Copy)
           return html`<p style="--c:${teamColor(row.teamId)}">
             <span class="m">${row.position} ${changeMark(row.change)}</span>
             <span class="k"></span>
-            <span class="who">${row.familyName.toLowerCase()}</span>
+            <button
+              type="button"
+              class="who driverbtn"
+              data-driver="${row.id}"
+              aria-label="${fill(text.openDriver, { name: row.familyName.toLowerCase() })}"
+            >
+              ${row.familyName.toLowerCase()}
+            </button>
             <span class="bar">${bar.filled}<i>${bar.rest}</i></span>
             <span class="n"><b>${formatPoints(row.points)}</b></span>
             <span class="n m">${gapText(row.points, leader)}</span>
