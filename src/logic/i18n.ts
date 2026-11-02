@@ -30,6 +30,9 @@ export interface Copy {
   retry: string;
   noData: string;
   noQualiYet: string;
+  qualiNotRun: string;
+  coming: string;
+  raceWhen: string;
   raceNotRun: string;
   fetchError: string;
   driverStandings: string;
@@ -105,6 +108,9 @@ const da: Copy = {
   retry: "prøv igen",
   noData: "ingen data",
   noQualiYet: "ingen kvalifikationsresultater endnu.",
+  qualiNotRun: "kvalifikationen er ikke kørt endnu.",
+  coming: "kommer",
+  raceWhen: "løbet køres {day} kl. {time}",
   raceNotRun: "løbet er ikke kørt endnu.",
   fetchError: "kunne ikke hente data fra jolpica.",
   driverStandings: "kørerstilling",
@@ -185,6 +191,9 @@ const en: Copy = {
   retry: "try again",
   noData: "no data",
   noQualiYet: "no qualifying results yet.",
+  qualiNotRun: "qualifying has not been run yet.",
+  coming: "upcoming",
+  raceWhen: "the race is on {day} at {time}",
   raceNotRun: "the race has not been run yet.",
   fetchError: "could not load data from jolpica.",
   driverStandings: "driver standings",
@@ -256,6 +265,10 @@ export function sessionName(text: Copy, kind: SessionKind): string {
 
 export function lapUnit(text: Copy, count: number): string {
   return count === 1 ? text.laps : text.lapsPlural;
+}
+
+export function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
 }
 
 export function parseLang(value: string | null): Lang | null {

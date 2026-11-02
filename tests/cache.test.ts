@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadCached, readEntry, type KeyValueStore } from "../src/data/cache.ts";
+import { loadCached, loadCachedEntry, readEntry, type KeyValueStore } from "../src/data/cache.ts";
 
 class MemoryStore implements KeyValueStore {
   private readonly values = new Map<string, string>();
@@ -91,6 +91,37 @@ describe("localStorage-cache", () => {
     await expect(
       loadCached({ store: full, key: "y", ttlMs: 50, now: 0, load: async () => 7 }),
     ).resolves.toBe(7);
+  });
+
+  test("et tomt resultat hentes igen efter den korte tid", async () => {
+    const store = new MemoryStore();
+    let calls = 0;
+    await loadCachedEntry({
+      store,
+      key: "qualifying-19",
+      ttlMs: 5 * 60_000,
+      emptyTtlMs: 30_000,
+      isEmpty: (rows: number[]) => rows.length === 0,
+      now: 0,
+      load: async () => {
+        calls += 1;
+        return [];
+      },
+    });
+    const again = await loadCachedEntry({
+      store,
+      key: "qualifying-19",
+      ttlMs: 5 * 60_000,
+      emptyTtlMs: 30_000,
+      isEmpty: (rows: number[]) => rows.length === 0,
+      now: 31_000,
+      load: async () => {
+        calls += 1;
+        return [1];
+      },
+    });
+    expect(again.data).toEqual([1]);
+    expect(calls).toBe(2);
   });
 
   test("uden cache og med fejl kastes fejlen videre", async () => {

@@ -1,4 +1,5 @@
 import { SEASON } from "../config.ts";
+import { weekendOpensAt } from "../logic/round.ts";
 import { loadCachedEntry, type KeyValueStore } from "./cache.ts";
 import { mapConstructors, mapDrivers, mapQualifying, mapRaceResult, mapSchedule } from "./map.ts";
 import type { ConstructorRow, DriverRow, QualifyingRow, RaceResult, RaceWeekend } from "./types.ts";
@@ -10,14 +11,29 @@ export const CACHE_TTL = {
   scheduleMs: 6 * 60 * 60 * 1000,
   standingsMs: 5 * 60 * 1000,
   resultsMs: 5 * 60 * 1000,
+  /** Tom kval eller et løb uden resultat. Kort, så weekenden ikke sidder fast. */
+  emptyMs: 30 * 1000,
 } as const;
+
+export interface RacePending {
+  round: number;
+  name: string;
+  raceStart: string;
+}
 
 export interface BoardData {
   weekends: RaceWeekend[];
   drivers: { round: number; rows: DriverRow[] };
   constructors: { round: number; rows: ConstructorRow[] };
+  /** Runden siden viser, når adressen ikke vælger en anden. */
+  focusRound: number;
+  qualiRound: number;
+  qualiName: string;
   qualifying: QualifyingRow[];
   result: RaceResult | null;
+  racePending: RacePending | null;
+  /** Seneste færdigkørte løb. Podiet bruger den, også mens næste løb venter. */
+  lastResult: RaceResult | null;
   fetchedAt: number;
 }
 
@@ -42,13 +58,36 @@ async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function cached<T>(key: string, ttlMs: number, load: () => Promise<T>) {
+function cached<T>(
+  key: string,
+  ttlMs: number,
+  load: () => Promise<T>,
+  isEmpty?: (data: T) => boolean,
+) {
   return loadCachedEntry({
     store: browserStore(),
     key: `${PREFIX}.${SEASON}.${key}`,
     ttlMs,
+    emptyTtlMs: isEmpty ? CACHE_TTL.emptyMs : undefined,
+    isEmpty,
     load,
   });
+}
+
+async function qualiOrEmpty(round: number): Promise<QualifyingRow[]> {
+  try {
+    return mapQualifying(await getJson(`${SEASON}/${round}/qualifying.json?limit=100`));
+  } catch {
+    return [];
+  }
+}
+
+async function raceOrNull(round: number): Promise<RaceResult | null> {
+  try {
+    return mapRaceResult(await getJson(`${SEASON}/${round}/results.json?limit=100`));
+  } catch {
+    return null;
+  }
 }
 
 export async function loadBoard(options?: { fresh?: boolean }): Promise<BoardData> {
@@ -69,20 +108,52 @@ export async function loadBoard(options?: { fresh?: boolean }): Promise<BoardDat
     ),
   ]);
 
-  const round = result.data?.round ?? 0;
+  const lastRound = result.data?.round ?? 0;
+  const next = weekends.data.find((weekend) => weekend.round > lastRound) ?? null;
+  const weekendOpen = Boolean(next && new Date(weekendOpensAt(next)).getTime() <= Date.now());
+  const focusRound = weekendOpen && next ? next.round : lastRound;
+
+  const qualiSource = focusRound > 0 ? focusRound : 0;
   const qualifying =
-    round > 0
-      ? await cached(`qualifying-${round}`, CACHE_TTL.resultsMs, async () =>
-          mapQualifying(await getJson(`${SEASON}/${round}/qualifying.json?limit=100`)),
+    qualiSource > 0
+      ? await cached(
+          `qualifying-${qualiSource}`,
+          resultsTtl,
+          () => qualiOrEmpty(qualiSource),
+          (rows) => rows.length === 0,
         )
       : { data: [] as QualifyingRow[], savedAt: result.savedAt };
+
+  let raceResult = result.data;
+  let racePending: RacePending | null = null;
+  if (weekendOpen && next) {
+    const race = await cached(
+      `result-${next.round}`,
+      resultsTtl,
+      () => raceOrNull(next.round),
+      (data) => data == null,
+    );
+    if (race.data) raceResult = race.data;
+    else {
+      raceResult = null;
+      racePending = { round: next.round, name: next.name, raceStart: next.raceStart };
+    }
+  }
+
+  const qualiName =
+    weekends.data.find((weekend) => weekend.round === qualiSource)?.name ?? result.data?.name ?? "";
 
   return {
     weekends: weekends.data,
     drivers: drivers.data,
     constructors: constructors.data,
+    focusRound,
+    qualiRound: qualiSource,
+    qualiName,
     qualifying: qualifying.data,
-    result: result.data,
+    result: raceResult,
+    racePending,
+    lastResult: result.data,
     fetchedAt: Math.max(weekends.savedAt, drivers.savedAt, constructors.savedAt, result.savedAt),
   };
 }
@@ -94,11 +165,17 @@ export async function loadRound(
 ): Promise<{ qualifying: QualifyingRow[]; result: RaceResult | null }> {
   const ttl = options?.fresh ? 0 : CACHE_TTL.resultsMs;
   const [qualifying, result] = await Promise.all([
-    cached(`qualifying-${round}`, ttl, async () =>
-      mapQualifying(await getJson(`${SEASON}/${round}/qualifying.json?limit=100`)),
+    cached(
+      `qualifying-${round}`,
+      ttl,
+      () => qualiOrEmpty(round),
+      (rows) => rows.length === 0,
     ),
-    cached(`result-${round}`, ttl, async () =>
-      mapRaceResult(await getJson(`${SEASON}/${round}/results.json?limit=100`)),
+    cached(
+      `result-${round}`,
+      ttl,
+      () => raceOrNull(round),
+      (data) => data == null,
     ),
   ]);
   return { qualifying: qualifying.data, result: result.data };

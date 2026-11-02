@@ -1,5 +1,5 @@
 import circuits from "./data/circuits.json";
-import type { BoardData } from "./data/jolpica.ts";
+import type { BoardData, RacePending } from "./data/jolpica.ts";
 import type {
   QualifyingRow,
   RaceResult,
@@ -22,7 +22,7 @@ import {
 import type { ProjectedStanding } from "./logic/points.ts";
 import { formatLiveGap, hasLiveTimes, type SampleDriver } from "./live/sample.ts";
 import { teamColor } from "./logic/teams.ts";
-import { copy, lapUnit, sessionName, type Copy, type Lang } from "./logic/i18n.ts";
+import { copy, fill, lapUnit, sessionName, type Copy, type Lang } from "./logic/i18n.ts";
 import { roundMenuLabel, selectableRounds } from "./logic/round.ts";
 import { drawTrack } from "./logic/track.ts";
 import { formatDanishClock, formatDanishDay, formatFetchedAt } from "./logic/time.ts";
@@ -59,6 +59,7 @@ export interface ResultsPane {
   status: "board" | "ready" | "error";
   qualifying: QualifyingRow[];
   result: RaceResult | null;
+  racePending?: RacePending | null;
 }
 
 export function renderBoard(
@@ -80,6 +81,14 @@ export function renderBoard(
   const useLive = Boolean(live?.on) && (pane == null || pane.liveDefault);
   const qualiRows = pane?.status === "ready" ? pane.qualifying : board.qualifying;
   const raceResult = pane?.status === "ready" ? pane.result : board.result;
+  const qualiMeta =
+    pane?.status === "ready"
+      ? {
+          round: pane.round ?? board.qualiRound,
+          name: pane.result?.name ?? pane.racePending?.name ?? board.qualiName,
+        }
+      : { round: board.qualiRound, name: board.qualiName };
+  const pending = pane?.status === "ready" ? (pane.racePending ?? null) : board.racePending;
   const standingsLive = useLive ? live : null;
   const qualiLive = Boolean(useLive && live?.quali);
   const raceLive = Boolean(useLive && live?.race);
@@ -120,11 +129,11 @@ export function renderBoard(
                   ? qualiMissing
                     ? unavailable(text)
                     : liveQuali(live as LiveOverlay, text)
-                  : raceResult
-                    ? qualifying(qualiRows, raceResult, text)
+                  : qualiRows.length > 0
+                    ? qualifying(qualiRows, qualiMeta, text)
                     : html`<section>
-                        <h2>${text.qualifying}<span>${text.noData}</span></h2>
-                        <p class="note">${text.noQualiYet}</p>
+                        <h2>${text.qualifying}<span>${text.coming}</span></h2>
+                        <p class="note">${text.qualiNotRun}</p>
                       </section>`
               }
               ${
@@ -134,10 +143,12 @@ export function renderBoard(
                     : liveRace(live as LiveOverlay, text)
                   : raceResult
                     ? raceTable(raceResult, text)
-                    : html`<section>
-                        <h2>${text.race}<span>–</span></h2>
-                        <p class="note">${text.raceNotRun}</p>
-                      </section>`
+                    : pending
+                      ? racePendingView(pending, text, lang)
+                      : html`<section>
+                          <h2>${text.race}<span>–</span></h2>
+                          <p class="note">${text.raceNotRun}</p>
+                        </section>`
               }
             </div>`
     }
@@ -179,11 +190,11 @@ function roundPicker(
   useLive: boolean,
   text: Copy,
 ): SafeHtml {
-  const last = board.result?.round ?? 0;
-  const numbers = selectableRounds(board.weekends, last).slice().reverse();
+  const focus = board.focusRound || board.result?.round || board.lastResult?.round || 0;
+  const numbers = selectableRounds(board.weekends, focus).slice().reverse();
   if (numbers.length === 0) return html``;
   const names = new Map(board.weekends.map((race) => [race.round, race.name]));
-  const picked = useLive ? null : (pane?.round ?? last);
+  const picked = pane?.round || (useLive ? null : focus);
   const label = picked == null ? text.liveCurrent : roundMenuLabel(picked, names.get(picked) ?? "");
   const option = (value: string, text: string, selected: boolean) => html`
     <li
@@ -480,8 +491,19 @@ function liveRace(live: LiveOverlay, text: Copy): SafeHtml {
   `;
 }
 
+function racePendingView(pending: RacePending, text: Copy, lang: Lang): SafeHtml {
+  const day = formatDanishDay(pending.raceStart, lang).replaceAll(/\s+/g, " ").trim();
+  const time = formatDanishClock(pending.raceStart);
+  return html`
+    <section>
+      <h2>${text.race}<span>r${pending.round} · ${text.coming}</span></h2>
+      <p class="note">${fill(text.raceWhen, { day, time })}</p>
+    </section>
+  `;
+}
+
 function podium(board: BoardData, text: Copy): SafeHtml {
-  const result = board.result;
+  const result = board.lastResult ?? board.result;
   if (!result || result.podium.length === 0) return html``;
   const labels = [text.winner, text.second, text.third];
   return html`

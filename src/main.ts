@@ -8,7 +8,7 @@ import {
   type TimingState,
 } from "./live/livetiming.ts";
 import { fetchOpenF1Snapshot, findOpenF1Session } from "./live/openf1.ts";
-import { SAMPLE_RACE, type SampleDriver } from "./live/sample.ts";
+import { hasLiveTimes, SAMPLE_RACE, type SampleDriver } from "./live/sample.ts";
 import { countdownParts, pad2 } from "./logic/board.ts";
 import {
   copy,
@@ -202,10 +202,7 @@ async function liveOverlay(board: BoardData, now: Date, lang: Lang): Promise<Liv
     if (mapped.hasTimes) return overlayFromBoard(board, mapped, lang, false);
   }
   const scoring = active.kind === "race" || active.kind === "sprint";
-  const timesPanel =
-    active.kind === "qualifying" ||
-    active.kind === "sprintQualifying" ||
-    active.kind.startsWith("practice");
+  const timesPanel = active.kind === "qualifying" || active.kind === "sprintQualifying";
   const openName =
     active.kind === "race" ? "Race" : active.kind === "sprint" ? "Sprint" : "Qualifying";
   let rows: SampleDriver[] | null = null;
@@ -245,6 +242,31 @@ async function liveOverlay(board: BoardData, now: Date, lang: Lang): Promise<Liv
   };
 }
 
+function sessionOver(state: TimingState | null): boolean {
+  const status = state?.SessionStatus;
+  const name =
+    status && typeof status === "object" && "Status" in status ? String(status.Status) : "";
+  return ["finished", "finalised", "finalized", "inactive"].includes(name.toLowerCase());
+}
+
+/** Når sessionen er slut og Jolpica har facit, vises det i stedet for den tomme live-tavle. */
+function settleLive(live: LiveOverlay | null, board: BoardData): LiveOverlay | null {
+  if (!live?.on || live.demo || !sessionOver(timingState)) return live;
+  const quali =
+    live.quali &&
+    board.qualifying.length > 0 &&
+    (sessionOver(timingState) || !hasLiveTimes(live.quali))
+      ? null
+      : live.quali;
+  const race =
+    live.race && board.result && (sessionOver(timingState) || !hasLiveTimes(live.race))
+      ? null
+      : live.race;
+  if (quali === live.quali && race === live.race) return live;
+  if (!quali && !race) return null;
+  return { ...live, quali, race };
+}
+
 function writeRoundUrl(round: number | null): void {
   const params = new URLSearchParams(location.search);
   const raw = params.get("runde");
@@ -265,32 +287,48 @@ async function show(fresh: boolean): Promise<void> {
     const lang = activeLang();
     paintChrome(lang);
     const board = await loadBoard({ fresh });
-    const rounds = selectableRounds(board.weekends, board.result?.round ?? 0);
+    cachedBoard = board;
+    const rounds = selectableRounds(board.weekends, board.focusRound || board.result?.round || 0);
     const params = new URLSearchParams(location.search);
     const queried = parseRoundQuery(params.get("runde"), rounds);
     if (params.get("runde") && queried == null) writeRoundUrl(null);
-    cachedBoard = board;
-    const live =
-      demoKind === "empty"
+    const focus = board.focusRound || board.result?.round || 0;
+    const viewingCurrent = queried == null || queried === focus;
+    let live = viewingCurrent
+      ? demoKind === "empty"
         ? emptyOverlay(lang)
         : demo
           ? demoOverlay(board, lang)
-          : await liveOverlay(board, now, lang);
+          : await liveOverlay(board, now, lang)
+      : null;
+    live = settleLive(live, board);
     const liveOn = Boolean(live?.on);
     let pane: ResultsPane | null = null;
-    if (liveOn && queried == null) {
-      pane = { round: null, liveDefault: true, status: "board", qualifying: [], result: null };
-    } else if (queried != null && queried !== board.result?.round) {
+    if (liveOn && viewingCurrent) {
+      pane = {
+        round: focus || null,
+        liveDefault: true,
+        status: "board",
+        qualifying: [],
+        result: null,
+      };
+    } else if (queried != null && queried !== focus) {
       const status = root.querySelector("[data-round-status]");
       if (status) status.textContent = copy[lang].loadingRound;
       try {
         const loaded = await loadRound(queried, { fresh });
+        const weekend = board.weekends.find((race) => race.round === queried);
         pane = {
           round: queried,
           liveDefault: false,
           status: "ready",
           qualifying: loaded.qualifying,
           result: loaded.result,
+          racePending: loaded.result
+            ? null
+            : weekend
+              ? { round: weekend.round, name: weekend.name, raceStart: weekend.raceStart }
+              : null,
         };
       } catch (error) {
         console.error(error);
@@ -316,8 +354,8 @@ async function show(fresh: boolean): Promise<void> {
     shown = true;
     const streaming = live?.feed === "live" && !live.demo;
     ensureDemo();
-    ensureFeed(liveOn && queried == null);
-    schedule(liveOn && queried == null, streaming);
+    ensureFeed(liveOn && viewingCurrent);
+    schedule(liveOn && viewingCurrent, streaming, Boolean(board.racePending) && viewingCurrent);
   } catch (error) {
     console.error(error);
     if (shown) return;
@@ -332,11 +370,11 @@ async function show(fresh: boolean): Promise<void> {
   }
 }
 
-function schedule(live: boolean, streaming: boolean): void {
+function schedule(live: boolean, streaming: boolean, pending: boolean): void {
   window.clearInterval(refreshTimer);
   if (demoKind === "live" || demoKind === "empty") return;
-  if (!live) return;
-  const wait = streaming ? 60_000 : openF1Locked ? 30_000 : 8_000;
+  if (!live && !pending) return;
+  const wait = !live ? 60_000 : streaming ? 60_000 : openF1Locked ? 30_000 : 8_000;
   refreshTimer = window.setInterval(() => {
     void show(true);
   }, wait);
