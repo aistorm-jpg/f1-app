@@ -1,4 +1,4 @@
-import { loadBoard, loadRound, type BoardData } from "./data/jolpica.ts";
+import { loadBoard, loadDriverCard, loadRound, type BoardData } from "./data/jolpica.ts";
 import { markup } from "./html.ts";
 import {
   demoTiming,
@@ -18,10 +18,17 @@ import {
   sessionName,
   type Lang,
 } from "./logic/i18n.ts";
+import { parseDriverQuery, teammateId } from "./logic/driver.ts";
 import { awardSessionPoints, projectStandings, type PointsKind } from "./logic/points.ts";
 import { parseRoundQuery, selectableRounds } from "./logic/round.ts";
 import { activeSession, qualifyingSegment } from "./logic/window.ts";
-import { errorView, renderBoard, type LiveOverlay, type ResultsPane } from "./render.ts";
+import {
+  errorView,
+  renderBoard,
+  type DriverView,
+  type LiveOverlay,
+  type ResultsPane,
+} from "./render.ts";
 
 const root = document.querySelector<HTMLElement>("#app");
 const demoKind = new URLSearchParams(location.search).get("demo");
@@ -343,7 +350,29 @@ async function show(fresh: boolean): Promise<void> {
     } else if (queried != null) {
       pane = { round: queried, liveDefault: false, status: "board", qualifying: [], result: null };
     }
-    root.innerHTML = markup(renderBoard(board, now, live, pane, lang));
+    const driverId = parseDriverQuery(params.get("korer"));
+    let driver: DriverView | null = null;
+    if (driverId) {
+      const status = root.querySelector("[data-driver-status]");
+      if (status) status.textContent = copy[lang].driverLoading;
+      try {
+        const mate = teammateId(board.drivers.rows, driverId);
+        const card = await loadDriverCard(driverId, { fresh });
+        let teammate = null;
+        if (mate) {
+          try {
+            teammate = await loadDriverCard(mate, { fresh });
+          } catch (error) {
+            console.error(error);
+          }
+        }
+        driver = { driver: card, teammate, error: false };
+      } catch (error) {
+        console.error(error);
+        driver = { driver: null, teammate: null, error: true };
+      }
+    }
+    root.innerHTML = markup(renderBoard(board, now, live, pane, lang, driver));
     root.setAttribute("aria-busy", "false");
     mountCountdown(root);
     if (focusLang) {
@@ -485,6 +514,15 @@ function toggleRoundMenu(): void {
   else closeRoundMenu(false);
 }
 
+function openDriver(id: string): void {
+  const params = new URLSearchParams(location.search);
+  if (params.get("korer") === id) return;
+  params.set("korer", id);
+  const query = params.toString();
+  history.pushState(null, "", `${location.pathname}?${query}${location.hash}`);
+  void show(false);
+}
+
 function applyRound(value: string): void {
   const params = new URLSearchParams(location.search);
   if (value === "live") params.delete("runde");
@@ -504,6 +542,25 @@ function bindShell(): void {
     if (!(target instanceof Element)) return;
     if (target.closest("[data-round-retry]")) {
       void show(true);
+      return;
+    }
+    if (target.closest("[data-driver-close]")) {
+      const params = new URLSearchParams(location.search);
+      if (history.length <= 1) {
+        params.delete("korer");
+        const query = params.toString();
+        history.replaceState(
+          null,
+          "",
+          `${location.pathname}${query ? `?${query}` : ""}${location.hash}`,
+        );
+        void show(false);
+      } else history.back();
+      return;
+    }
+    const driverButton = target.closest<HTMLElement>("[data-driver]");
+    if (driverButton?.dataset.driver) {
+      openDriver(driverButton.dataset.driver);
       return;
     }
     const langButton = target.closest<HTMLElement>("[data-lang]");

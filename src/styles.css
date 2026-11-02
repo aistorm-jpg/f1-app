@@ -308,10 +308,23 @@ h2 span {
   min-width: 0;
 }
 
-.t p > span {
+.t p > span,
+.t p > button.who {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+button.who {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-bottom: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .t p > span.k {
@@ -336,6 +349,62 @@ h2 span {
   color: var(--fg);
   max-width: 62ch;
   margin: 1.4rem 0 2rem;
+}
+
+.dossier {
+  padding: 1.2rem 0 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.dossier h2 button {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--mut);
+}
+
+.sums {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem 0.8rem;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.sums b {
+  display: block;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.rounds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
+  max-width: 100%;
+}
+
+.rounds p {
+  min-width: 3.4ch;
+}
+
+.rounds b {
+  display: block;
+}
+
+.h2h p {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(4ch, 8ch) minmax(4ch, 8ch);
+  column-gap: 1ch;
+}
+
+.h2h .hd {
+  color: var(--mut);
 }
 
 .n {

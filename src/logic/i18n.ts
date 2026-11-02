@@ -79,6 +79,18 @@ export interface Copy {
   pitIn: string;
   pitOut: string;
   knockedOut: string;
+  driverClose: string;
+  openDriver: string;
+  pointsPerRound: string;
+  racePlaces: string;
+  wins: string;
+  podiums: string;
+  dnfs: string;
+  pointsWord: string;
+  versus: string;
+  noTeammate: string;
+  driverMissing: string;
+  driverLoading: string;
 }
 
 const da: Copy = {
@@ -162,6 +174,18 @@ const da: Copy = {
   pitIn: "pit",
   pitOut: "ud",
   knockedOut: "ude",
+  driverClose: "luk",
+  openDriver: "åbn {name}",
+  pointsPerRound: "point pr. runde",
+  racePlaces: "løbsplaceringer",
+  wins: "sejre",
+  podiums: "podier",
+  dnfs: "udgåede",
+  pointsWord: "point",
+  versus: "mod holdkammerat",
+  noTeammate: "ingen holdkammerat i stillingen.",
+  driverMissing: "køreren blev ikke fundet.",
+  driverLoading: "henter køreren …",
 };
 
 const en: Copy = {
@@ -245,6 +269,18 @@ const en: Copy = {
   pitIn: "pit",
   pitOut: "out",
   knockedOut: "out",
+  driverClose: "close",
+  openDriver: "open {name}",
+  pointsPerRound: "points per round",
+  racePlaces: "race finishes",
+  wins: "wins",
+  podiums: "podiums",
+  dnfs: "dnfs",
+  pointsWord: "points",
+  versus: "versus teammate",
+  noTeammate: "no teammate in the standings.",
+  driverMissing: "driver not found.",
+  driverLoading: "loading the driver …",
 };
 
 export const copy: Record<Lang, Copy> = { da, en };

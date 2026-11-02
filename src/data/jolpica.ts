@@ -1,4 +1,5 @@
 import { SEASON } from "../config.ts";
+import { mapDriverCard, type DriverCard } from "../logic/driver.ts";
 import { weekendOpensAt } from "../logic/round.ts";
 import { loadCachedEntry, type KeyValueStore } from "./cache.ts";
 import { mapConstructors, mapDrivers, mapQualifying, mapRaceResult, mapSchedule } from "./map.ts";
@@ -179,4 +180,21 @@ export async function loadRound(
     ),
   ]);
   return { qualifying: qualifying.data, result: result.data };
+}
+
+/** Hele sæsonen for én kører: løb og kvalifikation. */
+export async function loadDriverCard(
+  id: string,
+  options?: { fresh?: boolean },
+): Promise<DriverCard> {
+  const ttl = options?.fresh ? 0 : CACHE_TTL.resultsMs;
+  const [races, qualifying] = await Promise.all([
+    cached(`driver-${id}-results`, ttl, () =>
+      getJson(`${SEASON}/drivers/${id}/results.json?limit=100`),
+    ),
+    cached(`driver-${id}-qualifying`, ttl, () =>
+      getJson(`${SEASON}/drivers/${id}/qualifying.json?limit=100`),
+    ),
+  ]);
+  return mapDriverCard(id, races.data, qualifying.data);
 }
